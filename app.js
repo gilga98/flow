@@ -39,6 +39,11 @@ const DEFAULT_STATE = {
         data: null, // { temp, code, isDay }
         lastFetched: 0,
         cacheDuration: 1800000 // 30 mins
+    },
+    rewards: {
+        saplings: [], // { id, date, code, claimed }
+        dailyPoints: { date: new Date().toISOString().split('T')[0], count: 0 },
+        totalPointsEarned: 0 // Lifetime tracking
     }
 };
 
@@ -105,7 +110,14 @@ function loadStore() {
                     } 
                 },
                 hydrationLogs: parsed.hydrationLogs || {},
-                weather: parsed.weather || DEFAULT_STATE.weather
+                hydrationLogs: parsed.hydrationLogs || {},
+                weather: parsed.weather || DEFAULT_STATE.weather,
+                rewards: {
+                    ...DEFAULT_STATE.rewards,
+                    ...parsed.rewards,
+                    saplings: parsed.rewards?.saplings || [],
+                    dailyPoints: parsed.rewards?.dailyPoints || DEFAULT_STATE.rewards.dailyPoints
+                }
             };
 
             // Migration: Move old water.current to hydrationLogs (if applicable)
@@ -130,10 +142,97 @@ function saveStore() {
     renderUI();
 }
 
-function updatePoints(amount) {
+
+const _k_p = [
+    70, 108, 111, 119, 105, 110, 103,
+    84, 114, 101, 101, 115,           
+    71, 114, 111, 119,                
+    70, 97, 115, 116,                 
+    50, 48, 50, 54                    
+];
+
+function getSecret() {
+    return String.fromCharCode(..._k_p);
+}
+
+async function generateVerificationCode(id, dateStr) {
+    const secret = getSecret();
+    const enc = new TextEncoder();
+    const keyData = enc.encode(secret);
+    const data = enc.encode(`${id}:${dateStr}`);
+    
+    try {
+        const key = await crypto.subtle.importKey(
+            "raw", keyData, 
+            { name: "HMAC", hash: "SHA-256" }, 
+            false, ["sign"]
+        );
+        
+        const sig = await crypto.subtle.sign("HMAC", key, data);
+        
+        // Convert to Hex
+        const sigArray = Array.from(new Uint8Array(sig));
+        const sigHex = sigArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        // Truncate signature to 8 chars for usability (sufficient for anti-gaming in this context)
+        // Format: ID|DATE|SIG_FRAGMENT
+        return `${id}|${dateStr}|${sigHex.substring(0, 8)}`;
+        
+    } catch (e) {
+        console.error("Crypto Error", e);
+        // Fallback for non-secure contexts (should typically not happen in modern PWA)
+        return `${id}|${dateStr}|ERR`; 
+    }
+}
+
+async function updatePoints(amount, source = 'generic') {
+    // anti-gaming: check daily limit for positive points
+    if (amount > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        if (store.rewards.dailyPoints.date !== today) {
+            store.rewards.dailyPoints = { date: today, count: 0 };
+        }
+        
+        // Cap at 300 points per day (30 tasks/events)
+        if (store.rewards.dailyPoints.count >= 300) {
+            showToast('Daily point limit reached! Come back tomorrow.', 'info');
+            return;
+        }
+        store.rewards.dailyPoints.count += amount;
+        store.rewards.totalPointsEarned += amount;
+    }
+
     const oldLevel = Math.floor(store.user.points / 100) + 1;
     store.user.points += amount;
     const newLevel = Math.floor(store.user.points / 100) + 1;
+    
+    // Check Sapling Milestone (Every 1000 points of TOTAL SCORE, or just current score? "Every 1000 points")
+    // Assuming cumulative: 1000, 2000, 3000...
+    const saplingCount = Math.floor(store.user.points / 1000);
+    const currentSaplings = store.rewards.saplings.length;
+    
+    
+    if (saplingCount > currentSaplings) {
+         // Award new saplings
+         const newSaplingsNeeded = saplingCount - currentSaplings;
+         for(let i=0; i<newSaplingsNeeded; i++) {
+             const saplingId = currentSaplings + i + 1;
+             const date = new Date().toISOString().split('T')[0]; // Use YYYY-MM-DD for stability
+             
+             // Secure Code Generation
+             // We await here, so this function must be robust to re-entrancy (unlikely given JS single-thread loop for this logic)
+             const code = await generateVerificationCode(saplingId, date);
+             
+             store.rewards.saplings.push({
+                 id: saplingId,
+                 date: new Date().toISOString(), // Keep full ISO for record
+                 code: code,
+                 claimed: false
+             });
+             
+             showToast(`🌱 Sapling #${saplingId} Unlocked!`, 'success', 5000);
+         }
+    }
     
     // Simple streak logic: if checked in today, increment. (Simplified for MVP)
     const today = new Date().toISOString().split('T')[0];
@@ -143,7 +242,7 @@ function updatePoints(amount) {
     }
     
     saveStore();
-    animatePoints(amount);
+    if (amount > 0) animatePoints(amount);
     
     if (newLevel > oldLevel) {
         triggerLevelUp(newLevel);
@@ -657,15 +756,91 @@ window.toggleTask = function(e, id) {
     if (e) e.stopPropagation();
     const task = store.tasks.find(t => t.id === id);
     if (task) {
+        // Anti-Gaming: Task Age Check (Must be > 1 min old to get points)
+        const now = Date.now();
+        const taskAge = now - (task.createdAt || 0); 
+        const isEligible = (task.createdAt && taskAge > 60000);
+
         task.completed = !task.completed;
+        
         if (task.completed) {
-            updatePoints(10); // Reward
+            // Task Completion Logic
+            task.completedAt = now;
+            
+            if (isEligible) {
+                updatePoints(10); // Reward
+            } else if (!task.createdAt) {
+                // Legacy tasks (no createdAt) - give points gently? Or safer to skip? 
+                // Let's assume legacy tasks are old enough.
+                updatePoints(10);
+            } else {
+                showToast("Task too new for points (Wait 1m)", "info");
+            }
         } else {
-            updatePoints(-10); // Penalize for unticking
+            // Unchecking - deduct points if they were likely awarded?
+            // Simplification: Always deduct 10 to keep balance, but don't go negative on daily cap logic (handled in updatePoints)
+            updatePoints(-10); 
         }
         saveStore();
     }
 }
+
+// New: Rewards Profile
+window.openRewardsProfile = function() {
+    const modal = document.getElementById('rewards-modal');
+    if (!modal) return;
+    
+    const list = document.getElementById('sapling-list');
+    const progressFill = document.getElementById('sapling-progress-fill');
+    const nextText = document.getElementById('sapling-next-text');
+    
+    // Stats
+    const total = store.user.points;
+    const currentSaplings = store.rewards.saplings.length;
+    const nextMilestone = (currentSaplings + 1) * 1000;
+    const needed = nextMilestone - total;
+    const progressPercent = Math.min((total % 1000) / 10, 100); // 0-1000 scale
+    
+    if (progressFill) progressFill.style.width = `${progressPercent}%`;
+    if (nextText) nextText.textContent = `${needed} points to next sapling`;
+    
+    // Render Saplings
+    list.innerHTML = '';
+    if (store.rewards.saplings.length === 0) {
+        list.innerHTML = `<div class="text-center text-muted-foreground py-8 text-sm">Keep flowing to plant your first tree! 🌱</div>`;
+    } else {
+        store.rewards.saplings.forEach(s => {
+            const el = document.createElement('div');
+            el.className = 'flex items-center justify-between p-3 bg-card border rounded-xl shadow-sm';
+            const dateStr = new Date(s.date).toLocaleDateString();
+            el.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <div class="h-10 w-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+                        <i data-lucide="sprout" class="h-5 w-5"></i>
+                    </div>
+                    <div>
+                        <p class="font-bold text-sm">Sapling #${s.id}</p>
+                        <p class="text-xs text-muted-foreground">Earned ${dateStr}</p>
+                    </div>
+                </div>
+                <button onclick="copySaplingCode('${s.code}')" class="text-xs font-bold bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-md transition-colors">
+                    Copy Code
+                </button>
+            `;
+            list.appendChild(el);
+        });
+        if (window.lucide) lucide.createIcons();
+    }
+    
+    modal.showModal();
+}
+
+window.copySaplingCode = function(code) {
+    navigator.clipboard.writeText(code).then(() => {
+        showToast('Confirmation code copied! Share it with us.', 'success');
+    });
+}
+
 
 window.handleItemClick = function(e, id) {
     if (isSelectionMode) {
@@ -891,7 +1066,8 @@ function setupListeners() {
                 completed: false,
                 recurrence: recurrence,
                 days: recurrence === 'weekdays' ? selectedDays : (recurrence === 'daily' ? [0,1,2,3,4,5,6] : []),
-                date: recurrence === 'none' ? store.user.selectedDate : null
+                date: recurrence === 'none' ? store.user.selectedDate : null,
+                createdAt: Date.now()
             };
             if (newTask.title && newTask.startTime) {
                 store.tasks.push(newTask);
@@ -1105,13 +1281,13 @@ function showNotification(title, body) {
              navigator.serviceWorker.ready.then(registration => {
                 registration.showNotification(title, {
                     body: body,
-                    icon: '/icon.png',
+                    icon: 'https://img.icons8.com/nolan/512/time.png',
                     vibrate: [200, 100, 200]
                 });
             });
         } else {
             // Fallback for non-SW contexts or localhost
-            const n = new Notification(title, { body, icon: '/icon.png' });
+            const n = new Notification(title, { body, icon: 'https://img.icons8.com/nolan/512/time.png' });
             n.onclick = () => {
                 n.close();
                 window.focus();
@@ -1619,7 +1795,8 @@ function addMealSchedule() {
             recurrence: 'daily',
             days: [0,1,2,3,4,5,6],
             date: null,
-            deletedDates: []
+            deletedDates: [],
+            createdAt: Date.now()
         };
         store.tasks.push(newTask);
         addedCount++;
@@ -1642,16 +1819,26 @@ const dismissBtn = document.getElementById('install-dismiss-btn');
 
 // Check if already installed (standalone mode)
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || document.referrer.includes('android-app://');
+const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
 if (!isStandalone) {
-    window.addEventListener('beforeinstallprompt', (e) => {
-        // Prevent the mini-infobar from appearing on mobile
-        e.preventDefault();
-        // Stash the event so it can be triggered later.
-        deferredPrompt = e;
-        // Update UI notify the user they can install the PWA
+    if (isIos) {
         showInstallBanner();
-    });
+        if (installBanner) {
+            const p = installBanner.querySelector('p');
+            if (p) p.textContent = "Tap Share and select 'Add to Home Screen'";
+            if (installBtn) installBtn.style.display = 'none';
+        }
+    } else {
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Stash the event so it can be triggered later.
+            deferredPrompt = e;
+            // Update UI notify the user they can install the PWA
+            showInstallBanner();
+        });
+    }
 }
 
 function showInstallBanner() {

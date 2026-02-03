@@ -6,6 +6,8 @@
     <title>Daily Flow</title>
     <meta name="description" content="A simple, distraction-free timetable app.">
     <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="logo-square.svg">
+    <link rel="apple-touch-icon" href="logo-square.svg">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -78,13 +80,10 @@
         <header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div class="container flex h-14 max-w-screen-2xl items-center justify-between px-4 mx-auto">
                 <div class="flex items-center gap-2 font-bold text-xl tracking-tight">
-                    <div class="bg-primary text-primary-foreground p-1 rounded-lg">
-                        <i data-lucide="calendar-clock" class="h-5 w-5"></i>
-                    </div>
-                    <span>Flow</span>
+                    <img src="logo-horizontal.svg" alt="Daily Flow" class="h-8 w-auto">
                 </div>
                 <div class="flex items-center gap-3">
-                    <div id="reward-container" class="flex flex-col items-end gap-1">
+                    <div id="reward-container" class="flex flex-col items-end gap-1 cursor-pointer hover:opacity-80 transition-opacity" onclick="openRewardsProfile()">
                         <div class="flex items-center gap-2">
                              <div id="level-badge" class="px-2 py-0.5 bg-primary text-[10px] font-bold text-primary-foreground rounded uppercase tracking-tighter shadow-sm">
                                 Lvl <span id="level-value">1</span>
@@ -568,6 +567,48 @@
                     </div>
                 </div>
             </div>
+        </dialog>
+
+        <!-- Rewards Modal -->
+        <dialog id="rewards-modal" class="p-0 bg-transparent backdrop:bg-background/80 backdrop:backdrop-blur-sm animate-in fade-in duration-200">
+             <div class="fixed inset-0 z-[80] flex items-center justify-center p-4">
+                <div class="bg-card text-foreground w-full max-w-sm rounded-2xl border border-border shadow-2xl p-6 overflow-hidden animate-in zoom-in duration-300 relative">
+                    <button onclick="document.getElementById('rewards-modal').close()" class="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+                        <i data-lucide="x" class="h-5 w-5"></i>
+                    </button>
+                    
+                    <div class="text-center mb-6">
+                        <div class="inline-flex items-center justify-center h-16 w-16 rounded-full bg-green-100 text-green-600 mb-3 shadow-sm ring-4 ring-green-50">
+                            <i data-lucide="tree-deciduous" class="h-8 w-8"></i>
+                        </div>
+                        <h2 class="text-2xl font-black tracking-tight">Your Impact</h2>
+                        <p class="text-sm text-muted-foreground">Every 1000 points plants a sapling.</p>
+                    </div>
+
+                    <div class="space-y-6">
+                        <!-- Progress -->
+                        <div class="space-y-2">
+                             <div class="flex justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                <span>Progress</span>
+                                <span id="sapling-next-text">...</span>
+                            </div>
+                            <div class="h-3 w-full bg-secondary rounded-full overflow-hidden">
+                                <div id="sapling-progress-fill" class="h-full bg-gradient-to-r from-green-400 to-green-600 w-0 transition-all duration-1000"></div>
+                            </div>
+                        </div>
+
+                        <!-- List -->
+                        <div class="max-h-[200px] overflow-y-auto space-y-2 pr-1" id="sapling-list">
+                            <!-- Saplings Injected Here -->
+                        </div>
+                        
+                        <div class="bg-muted/50 p-3 rounded-lg text-xs text-muted-foreground leading-relaxed">
+                            <i data-lucide="info" class="inline-block h-3 w-3 mr-1 align-middle"></i>
+                            Copy the code for any earned sapling and verify it with us to confirm planting.
+                        </div>
+                    </div>
+                </div>
+             </div>
         </dialog>
 
     </div>
