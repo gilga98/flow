@@ -23,7 +23,7 @@ const DEFAULT_STATE = {
             lastDrink: Date.now(),
             reminders: false
         },
-        settings: {
+    settings: {
             notificationsEnabled: false,
             darkMode: false,
             wakeTime: '07:00',
@@ -34,6 +34,11 @@ const DEFAULT_STATE = {
                 dinner: '20:00'
             }
         }
+    },
+    weather: {
+        data: null, // { temp, code, isDay }
+        lastFetched: 0,
+        cacheDuration: 1800000 // 30 mins
     }
 };
 
@@ -99,7 +104,8 @@ function loadStore() {
                         meals: { ...DEFAULT_STATE.user.settings.meals, ...parsed.user?.settings?.meals }
                     } 
                 },
-                hydrationLogs: parsed.hydrationLogs || {}
+                hydrationLogs: parsed.hydrationLogs || {},
+                weather: parsed.weather || DEFAULT_STATE.weather
             };
 
             // Migration: Move old water.current to hydrationLogs (if applicable)
@@ -201,12 +207,15 @@ function init() {
     checkNotifications();
     
     // Initial checks
+    updateGreeting();
+    fetchWeather();
     checkWakeUpBounty();
     checkDailyWaterReset();
     
     // Heartbeat every minute
     setInterval(() => {
         updateCurrentTask();
+        updateGreeting(); // Update greeting as time changes
         // Ensure these run even if app is left open overnight
         checkWakeUpBounty();
         checkDailyWaterReset();
@@ -431,9 +440,9 @@ function updateCurrentTask() {
     const todayDay = now.getDay();
     const todayStr = now.toISOString().split('T')[0];
     
-    const current = store.tasks.find(t => {
-        const matchesTime = currentTime >= t.startTime && currentTime <= t.endTime;
-        if (!matchesTime) return false;
+    // Get all tasks for today
+    const todayTasks = store.tasks.filter(t => {
+        if (t.deletedDates && t.deletedDates.includes(todayStr)) return false;
         
         if (t.recurrence === 'none') return t.date === todayStr;
         if (t.recurrence === 'daily') return true;
@@ -441,35 +450,145 @@ function updateCurrentTask() {
         return false;
     });
     
+    const sortedTasks = todayTasks.sort((a,b) => a.startTime.localeCompare(b.startTime));
+
+    const current = sortedTasks.find(t => {
+        return currentTime >= t.startTime && currentTime <= t.endTime;
+    });
+    
+    // Check for Day Complete (All tasks defined for today are marked completed)
+    const allDone = todayTasks.length > 0 && todayTasks.every(t => t.completed);
+
     if (current) {
         currentTaskDisplay.textContent = current.title;
         currentTaskTime.textContent = `${current.startTime} - ${current.endTime}`;
+        
+        if (current.completed) {
+             currentTaskDisplay.innerHTML = `<span class="line-through opacity-50">${current.title}</span> <span class="text-xs align-middle bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full no-underline ml-2">Done</span>`;
+        }
+    } else if (allDone) {
+        currentTaskDisplay.textContent = "Day Complete";
+        currentTaskTime.textContent = "See you tomorrow!";
     } else {
         // Find next task today
-        const todayTasks = store.tasks.filter(t => {
-            if (t.recurrence === 'none') return t.date === todayStr;
-            if (t.recurrence === 'daily') return true;
-            if (t.recurrence === 'weekdays') return t.days && t.days.includes(todayDay);
-            return false;
-        });
-
-        const sortedTasks = todayTasks.sort((a,b) => a.startTime.localeCompare(b.startTime));
         const next = sortedTasks.find(t => t.startTime > currentTime);
         
         if (next) {
             currentTaskDisplay.textContent = "Free Time";
             currentTaskTime.textContent = `Next: ${next.title} at ${next.startTime}`;
         } else {
-            // Check if there are any tasks today, if not show the first one tomorrow
+            // No current task, no next task. 
+            // Check if day has ended (time is past last task)
             if (sortedTasks.length > 0 && currentTime > sortedTasks[sortedTasks.length-1].endTime) {
-                currentTaskDisplay.textContent = "Day Ended";
-                currentTaskTime.textContent = "See you tomorrow!";
+                 // Even if allDone is false (meaning some were skipped/not checked), if we are past the last task time:
+                 const anyLeft = sortedTasks.some(t => !t.completed);
+                 if (!anyLeft) {
+                     // This block might be redundant with allDone check above, but keeps logic safe for edge cases
+                    currentTaskDisplay.textContent = "Day Complete";
+                    currentTaskTime.textContent = "Great job today!";
+                 } else {
+                    currentTaskDisplay.textContent = "Day Ended";
+                    currentTaskTime.textContent = "Unfinished tasks remain";
+                 }
             } else {
                 currentTaskDisplay.textContent = "Flow State";
                 currentTaskTime.textContent = "No tasks planned";
             }
         }
     }
+}
+
+function updateGreeting() {
+    const greetingEl = document.getElementById('greeting-text');
+    const dateEl = document.getElementById('full-date-display');
+    if (!greetingEl) return;
+    
+    const now = new Date();
+    const hrs = now.getHours();
+    let text = 'Good Morning';
+    
+    if (hrs >= 12 && hrs < 17) text = 'Good Afternoon';
+    else if (hrs >= 17) text = 'Good Evening';
+    
+    // Add User Name logic later if needed
+    greetingEl.textContent = text;
+    
+    const options = { weekday: 'long', month: 'long', day: 'numeric' };
+    if (dateEl) dateEl.textContent = now.toLocaleDateString(undefined, options);
+}
+
+function fetchWeather() {
+    const widget = document.getElementById('weather-widget');
+    if (!widget) return;
+    
+    // Cache Check
+    const now = Date.now();
+    if (store.weather && store.weather.data && (now - store.weather.lastFetched < store.weather.cacheDuration)) {
+        renderWeather(store.weather.data);
+        return;
+    }
+
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(async (position) => {
+        try {
+            const { latitude, longitude } = position.coords;
+            // Using Open-Meteo (Free, No Key)
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`);
+            const data = await res.json();
+            
+            if (data.current_weather) {
+                const weatherData = {
+                    temp: Math.round(data.current_weather.temperature),
+                    code: data.current_weather.weathercode,
+                    isDay: data.current_weather.is_day
+                };
+                
+                store.weather.data = weatherData;
+                store.weather.lastFetched = Date.now();
+                saveStore();
+                renderWeather(weatherData);
+            }
+        } catch (e) {
+            console.error('Weather fetch failed', e);
+        }
+    }, (err) => {
+        console.log('Geo permission denied used', err);
+    });
+}
+
+function renderWeather(data) {
+    const widget = document.getElementById('weather-widget');
+    const tempEl = document.getElementById('weather-temp');
+    const iconEl = document.getElementById('weather-icon');
+    const descEl = document.getElementById('weather-desc');
+    
+    widget.classList.remove('hidden');
+    widget.classList.add('flex');
+    
+    tempEl.textContent = `${data.temp}°`;
+    
+    // Simple Mapping
+    // 0: Clear, 1-3: Cloudy, 45-48: Fog, 51-67: Rain, 71-77: Snow, 80-82: Rain, 95-99: Storm
+    const code = data.code;
+    let icon = 'sun';
+    let desc = 'Clear';
+    let color = 'text-orange-500';
+    
+    if (code > 0 && code <= 3) { icon = 'cloud-sun'; desc = 'Cloudy'; color = 'text-yellow-500'; }
+    else if (code >= 45 && code <= 48) { icon = 'cloud-fog'; desc = 'Foggy'; color = 'text-gray-400'; }
+    else if (code >= 51 && code <= 67) { icon = 'cloud-rain'; desc = 'Rain'; color = 'text-blue-400'; }
+    else if (code >= 71 && code <= 77) { icon = 'snowflake'; desc = 'Snow'; color = 'text-blue-200'; }
+    else if (code >= 80 && code <= 82) { icon = 'cloud-drizzle'; desc = 'Showers'; color = 'text-blue-400'; }
+    else if (code >= 95) { icon = 'cloud-lightning'; desc = 'Storm'; color = 'text-purple-500'; }
+    
+    if (data.isDay === 0 && code === 0) { icon = 'moon'; color = 'text-indigo-300'; desc = 'Clear Night'; }
+    
+    iconEl.setAttribute('data-lucide', icon);
+    iconEl.className = `h-6 w-6 ${color} fill-current/20`;
+    descEl.textContent = desc;
+    
+    if (window.lucide) lucide.createIcons();
 }
 
 function renderWeeklyScroller() {
