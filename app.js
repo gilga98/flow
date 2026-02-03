@@ -27,7 +27,12 @@ const DEFAULT_STATE = {
             notificationsEnabled: false,
             darkMode: false,
             wakeTime: '07:00',
-            sleepTime: '23:00'
+            sleepTime: '23:00',
+            meals: {
+                breakfast: '08:00',
+                lunch: '13:00',
+                dinner: '20:00'
+            }
         }
     }
 };
@@ -88,7 +93,11 @@ function loadStore() {
                     ...parsed.user, 
                     selectedDate: parsed.user?.selectedDate || DEFAULT_STATE.user.selectedDate,
                     water: { ...DEFAULT_STATE.user.water, ...parsed.user?.water },
-                    settings: { ...DEFAULT_STATE.user.settings, ...parsed.user?.settings } 
+                    settings: { 
+                        ...DEFAULT_STATE.user.settings, 
+                        ...parsed.user?.settings,
+                        meals: { ...DEFAULT_STATE.user.settings.meals, ...parsed.user?.settings?.meals }
+                    } 
                 },
                 hydrationLogs: parsed.hydrationLogs || {}
             };
@@ -295,57 +304,87 @@ function renderUI() {
         if (isSelectionMode) timelineList.classList.add('is-selecting');
         else timelineList.classList.remove('is-selecting');
 
-        sortedTasks.forEach((task, index) => {
-            const isCompleted = task.completed;
-            const now = new Date();
-            const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-            const isToday = formattedSelectedDate === todayStr;
-            const isActive = isToday && currentTime >= task.startTime && currentTime <= task.endTime;
-            const isSelected = selectedTaskIds.has(task.id);
+        // Cluster tasks for horizontal layout (handling conflict/overlaps)
+        const clusters = [];
+        let currentCluster = [];
+        let clusterEndTime = "00:00";
 
-            // Filter out if this specific date is in deletedDates
+        sortedTasks.forEach(task => {
+            // Filter out deleted dates first
             if (task.deletedDates && task.deletedDates.includes(formattedSelectedDate)) return;
 
-            const iconName = getTaskIcon(task.title);
+            // Check overlap: Task starts before current cluster ends
+            if (currentCluster.length > 0 && task.startTime < clusterEndTime) {
+                currentCluster.push(task);
+                if (task.endTime > clusterEndTime) clusterEndTime = task.endTime;
+            } else {
+                if (currentCluster.length > 0) clusters.push(currentCluster);
+                currentCluster = [task];
+                clusterEndTime = task.endTime;
+            }
+        });
+        if (currentCluster.length > 0) clusters.push(currentCluster);
 
-            const el = document.createElement('div');
-            el.className = `timeline-item relative pl-8 pb-8 transition-all duration-500 animate-in fade-in slide-in-from-bottom-4 ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''}`;
-            el.style.animationDelay = `${index * 50}ms`;
+        // Render Clusters
+        clusters.forEach((cluster, clusterIndex) => {
+            const isMulti = cluster.length > 1;
+            
+            const container = document.createElement('div');
+            // If multiple, use flex row with gap and scroll
+            container.className = isMulti ? "flex gap-2 w-full overflow-x-auto pb-2 snap-x no-scrollbar" : "w-full";
+            
+            cluster.forEach((task, index) => {
+                const isCompleted = task.completed;
+                const now = new Date();
+                const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+                const isToday = formattedSelectedDate === todayStr;
+                const isActive = isToday && currentTime >= task.startTime && currentTime <= task.endTime;
+                const isSelected = selectedTaskIds.has(task.id);
 
-            el.innerHTML = `
-                <div class="timeline-dot ${iconName ? 'bg-primary border-primary' : ''}"></div>
-                <div class="selection-circle ${isSelected ? 'selected' : ''}">
-                    <i data-lucide="check" class="h-3 w-3"></i>
-                </div>
-                <div class="timeline-card group relative bg-card border rounded-2xl p-4 shadow-sm transition-all duration-300 hover:shadow-md hover:border-primary/20 ${isActive ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}" 
-                     onclick="handleItemClick(event, '${task.id}')">
-                    <div class="flex items-center justify-between gap-4">
-                        <div class="flex flex-col gap-1 overflow-hidden pointer-events-none">
-                            <div class="flex items-center gap-2">
-                                <span class="text-[10px] font-bold tracking-wider text-muted-foreground uppercase py-0.5 px-2 bg-secondary rounded-full flex items-center gap-1">
-                                    ${iconName ? `<i data-lucide="${iconName}" class="h-3 w-3"></i>` : ''}
-                                    ${task.startTime} - ${task.endTime}
-                                </span>
-                                ${isActive ? '<span class="flex h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>' : ''}
-                                ${task.recurrence !== 'none' ? `<span class="text-[9px] font-bold text-primary/60 uppercase">${task.recurrence === 'daily' ? 'Daily' : 'Repeats'}</span>` : ''}
-                            </div>
-                            <span class="text-base font-semibold leading-tight truncate ${isCompleted ? 'line-through text-muted-foreground decoration-2' : 'text-foreground'}">${task.title}</span>
-                        </div>
-                        <div class="flex items-center gap-2 shrink-0">
-                            <button onclick="toggleTask(event, '${task.id}')" class="h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${isSelectionMode ? 'hidden' : ''} ${isCompleted ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20 scale-110' : 'bg-background hover:bg-accent border-input hover:border-primary hover:scale-105'}">
-                                ${isCompleted ? '<i data-lucide="check" class="h-5 w-5"></i>' : '<i data-lucide="circle" class="h-5 w-5 text-muted-foreground/50"></i>'}
-                            </button>
-                            <button onclick="openFocusMode('${task.id}')" class="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full flex items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}" title="Focus">
-                                <i data-lucide="target" class="h-4 w-4"></i>
-                            </button>
-                            <button onclick="openDeleteModal(event, '${task.id}')" class="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full flex items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}">
-                                <i data-lucide="trash-2" class="h-4 w-4"></i>
-                            </button>
-                        </div>
+                const iconName = getTaskIcon(task.title);
+
+                const el = document.createElement('div');
+                // Adjust classes: if multi, use flex-none with reasonable width to enable scrolling
+                // We keep relative pl-8 pb-8 for the visual timeline line on the item itself
+                el.className = `timeline-item relative pl-8 pb-8 transition-all duration-500 animate-in fade-in slide-in-from-bottom-4 ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''} ${isMulti ? 'flex-none w-[85%] sm:w-[45%] snap-center' : ''}`;
+                el.style.animationDelay = `${(clusterIndex + index) * 50}ms`;
+
+                el.innerHTML = `
+                    <div class="timeline-dot ${iconName ? 'bg-primary border-primary' : ''}"></div>
+                    <div class="selection-circle ${isSelected ? 'selected' : ''}">
+                        <i data-lucide="check" class="h-3 w-3"></i>
                     </div>
-                </div> 
-            `;
-            timelineList.appendChild(el);
+                    <div class="timeline-card group relative bg-card border rounded-2xl p-4 shadow-sm transition-all duration-300 hover:shadow-md hover:border-primary/20 ${isActive ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}" 
+                        onclick="handleItemClick(event, '${task.id}')">
+                        <div class="flex items-center justify-between gap-4">
+                            <div class="flex flex-col gap-1 overflow-hidden pointer-events-none">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] font-bold tracking-wider text-muted-foreground uppercase py-0.5 px-2 bg-secondary rounded-full flex items-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
+                                        ${iconName ? `<i data-lucide="${iconName}" class="h-3 w-3"></i>` : ''}
+                                        ${task.startTime} - ${task.endTime}
+                                    </span>
+                                    ${isActive ? '<span class="flex h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0"></span>' : ''}
+                                    ${task.recurrence !== 'none' ? `<span class="text-[9px] font-bold text-primary/60 uppercase shrink-0">${task.recurrence === 'daily' ? 'Daily' : 'Repeats'}</span>` : ''}
+                                </div>
+                                <span class="text-base font-semibold leading-tight truncate ${isCompleted ? 'line-through text-muted-foreground decoration-2' : 'text-foreground'}">${task.title}</span>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <button onclick="toggleTask(event, '${task.id}')" class="h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${isSelectionMode ? 'hidden' : ''} ${isCompleted ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20 scale-110' : 'bg-background hover:bg-accent border-input hover:border-primary hover:scale-105'}">
+                                    ${isCompleted ? '<i data-lucide="check" class="h-5 w-5"></i>' : '<i data-lucide="circle" class="h-5 w-5 text-muted-foreground/50"></i>'}
+                                </button>
+                                <button onclick="openFocusMode('${task.id}')" class="hidden sm:flex h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}" title="Focus">
+                                    <i data-lucide="target" class="h-4 w-4"></i>
+                                </button>
+                                <button onclick="openDeleteModal(event, '${task.id}')" class="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full flex items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}">
+                                    <i data-lucide="trash-2" class="h-4 w-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div> 
+                `;
+                container.appendChild(el);
+            });
+            timelineList.appendChild(container);
         });
     }
 
@@ -780,9 +819,9 @@ function setupListeners() {
                 const parsed = JSON.parse(e.target.result);
                 store = parsed;
                 saveStore();
-                alert('Data imported successfully!');
+                showToast('Data imported successfully!', 'success');
             } catch (err) {
-                alert('Invalid JSON file');
+                showToast('Invalid JSON file', 'error');
             }
         };
         reader.readAsText(file);
@@ -819,6 +858,19 @@ function setupListeners() {
     if (addMealBtn) {
         addMealBtn.addEventListener('click', addMealSchedule);
     }
+
+    // Meal Times Inputs
+    ['breakfast', 'lunch', 'dinner'].forEach(meal => {
+        const input = document.getElementById(`setting-meal-${meal}`);
+        if (input) {
+            input.value = store.user.settings.meals?.[meal] || DEFAULT_STATE.user.settings.meals[meal];
+            input.addEventListener('change', (e) => {
+                if (!store.user.settings.meals) store.user.settings.meals = {};
+                store.user.settings.meals[meal] = e.target.value;
+                saveStore();
+            });
+        }
+    });
 }
 
 function applyTheme() {
@@ -839,16 +891,40 @@ function checkNotifications() {
     const todayStr = now.toISOString().split('T')[0];
     
     const taskStarting = store.tasks.find(t => {
-        if (t.startTime !== currentTime) return false;
+        if (t.startTime === currentTime) return true;
         
-        if (t.recurrence === 'none') return t.date === todayStr;
-        if (t.recurrence === 'daily') return true;
-        if (t.recurrence === 'weekdays') return t.days && t.days.includes(todayDay);
+        // 5 Minute Warning Logic
+        const [h, m] = t.startTime.split(':').map(Number);
+        const taskMinutes = h * 60 + m;
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        
+        if (taskMinutes - currentMinutes === 5) {
+             // Check valid day
+             if (t.recurrence === 'none') return t.date === todayStr;
+             if (t.recurrence === 'daily') return true;
+             if (t.recurrence === 'weekdays') return t.days && t.days.includes(todayDay);
+        }
+        
         return false;
     });
     
     if (taskStarting) {
-        showNotification(`Starting: ${taskStarting.title}`, `It's time for ${taskStarting.title}`);
+        const [h, m] = taskStarting.startTime.split(':').map(Number);
+        const taskMinutes = h * 60 + m;
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        
+        if (taskMinutes - currentMinutes === 5) {
+            showNotification(`Up Next: ${taskStarting.title}`, `Starting in 5 minutes (${taskStarting.startTime})`);
+        } else if (taskStarting.startTime === currentTime) {
+            // Check day validity again for exact match (since find returns first match)
+            // Ideally we filter first, but this is a quick patch on existing structure
+            let isValid = false;
+            if (taskStarting.recurrence === 'none') isValid = taskStarting.date === todayStr;
+            else if (taskStarting.recurrence === 'daily') isValid = true;
+            else if (taskStarting.recurrence === 'weekdays') isValid = taskStarting.days && taskStarting.days.includes(todayDay);
+            
+            if (isValid) showNotification(`Starting: ${taskStarting.title}`, `It's time for ${taskStarting.title}`);
+        }
     }
 
     // Water Reminder
@@ -890,8 +966,48 @@ function checkNotifications() {
 
 function showNotification(title, body) {
     if (Notification.permission === 'granted') {
-        new Notification(title, { body, icon: '/icon.png' });
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+             navigator.serviceWorker.ready.then(registration => {
+                registration.showNotification(title, {
+                    body: body,
+                    icon: '/icon.png',
+                    vibrate: [200, 100, 200]
+                });
+            });
+        } else {
+            // Fallback for non-SW contexts or localhost
+            new Notification(title, { body, icon: '/icon.png' });
+        }
     }
+    // Also show toast inside app if visible
+    if (!document.hidden) {
+        showToast(title, 'info');
+    }
+}
+
+function showToast(message, type = 'info', duration = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    
+    let icon = 'info';
+    if (type === 'success') icon = 'check-circle';
+    if (type === 'error') icon = 'alert-circle';
+    
+    toast.innerHTML = `
+        <i data-lucide="${icon}" class="h-5 w-5 ${type === 'success' ? 'text-green-500' : type === 'error' ? 'text-destructive' : 'text-primary'}"></i>
+        <span class="text-sm font-medium">${message}</span>
+    `;
+    
+    container.appendChild(toast);
+    if (window.lucide) lucide.createIcons();
+    
+    setTimeout(() => {
+        toast.classList.add('toast-closing');
+        toast.addEventListener('animationend', () => toast.remove());
+    }, duration);
 }
 
 // --- Utilities Logic ---
@@ -1338,16 +1454,25 @@ function checkWakeUpBounty() {
 }
 
 function addMealSchedule() {
+    const mealSettings = store.user.settings.meals || DEFAULT_STATE.user.settings.meals;
     const meals = [
-        { title: 'Breakfast', time: '08:00', duration: 30 },
-        { title: 'Lunch', time: '13:00', duration: 45 },
-        { title: 'Dinner', time: '20:00', duration: 45 }
+        { title: 'Breakfast', time: mealSettings.breakfast, duration: 30 },
+        { title: 'Lunch', time: mealSettings.lunch, duration: 45 },
+        { title: 'Dinner', time: mealSettings.dinner, duration: 45 }
     ];
     
     let addedCount = 0;
     meals.forEach(m => {
-        // Check if exists
-        // Simply push recurring tasks
+        // Prevent Duplicates
+        // Check if a daily recurring task with same title already exists
+        const exists = store.tasks.some(t => 
+            t.title === m.title && 
+            t.recurrence === 'daily' &&
+            !t.deletedDates.includes(new Date().toISOString().split('T')[0])
+        );
+        
+        if (exists) return;
+
         const [h, min] = m.time.split(':').map(Number);
         const endD = new Date();
         endD.setHours(h, min + m.duration, 0, 0);
@@ -1369,7 +1494,7 @@ function addMealSchedule() {
     });
     
     saveStore();
-    alert(`Added ${addedCount} recurring meal tasks!`);
+    showToast(`Added ${addedCount} recurring meal tasks!`, 'success');
 }
 
 // Start the app
