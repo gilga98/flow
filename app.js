@@ -53,6 +53,7 @@ let store = loadStore();
 let isSelectionMode = false;
 let selectedTaskIds = new Set();
 let pendingDeleteId = null; // Single task deletion tracking
+let editingId = null; // Track item being edited
 
 function setSelectionMode(active) {
     isSelectionMode = active;
@@ -451,7 +452,7 @@ function renderUI() {
     // Dynamic Icon Logic
     const levelIconWrapper = document.getElementById('level-icon-wrapper');
     if (levelIconWrapper) {
-        let iconName = 'seed';
+        let iconName = 'leaf';
         if (level >= 6) iconName = 'sprout';
         if (level >= 11) iconName = 'tree-deciduous';
         
@@ -627,6 +628,15 @@ function renderUI() {
                                     <button onclick="toggleTask(event, '${task.id}')" class="h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${isSelectionMode ? 'hidden' : ''} ${isCompleted ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20 scale-110' : 'bg-background hover:bg-accent border-input hover:border-primary hover:scale-105'}">
                                         ${isCompleted ? '<i data-lucide="check" class="h-5 w-5"></i>' : '<i data-lucide="circle" class="h-5 w-5 text-muted-foreground/50"></i>'}
                                     </button>
+                                    <button onclick="openFocusMode('${task.id}')" class="hidden sm:flex h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}" title="Focus">
+                                        <i data-lucide="target" class="h-4 w-4"></i>
+                                    </button>
+                                    <button onclick="openEditTaskModal(event, '${task.id}')" class="h-8 w-8 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-full flex items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}" title="Edit">
+                                        <i data-lucide="pencil" class="h-4 w-4"></i>
+                                    </button>
+                                    <button onclick="openDeleteModal(event, '${task.id}')" class="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full flex items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}" title="Delete">
+                                        <i data-lucide="trash-2" class="h-4 w-4"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div> 
@@ -669,6 +679,9 @@ function renderUI() {
                                 <button onclick="openFocusMode('${task.id}')" class="hidden sm:flex h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}" title="Focus">
                                     <i data-lucide="target" class="h-4 w-4"></i>
                                 </button>
+                                <button onclick="openEditTaskModal(event, '${task.id}')" class="h-8 w-8 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-full flex items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}" title="Edit">
+                                    <i data-lucide="pencil" class="h-4 w-4"></i>
+                                </button>
                                 <button onclick="openDeleteModal(event, '${task.id}')" class="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full flex items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}">
                                     <i data-lucide="trash-2" class="h-4 w-4"></i>
                                 </button>
@@ -702,9 +715,14 @@ function renderUI() {
                             <i data-lucide="calendar" class="h-3 w-3"></i>
                             ${new Date(note.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                         </div>
-                        <button onclick="deleteNote('${note.id}')" class="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full flex items-center justify-center transition-colors">
-                            <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
-                        </button>
+                        <div class="flex items-center gap-2">
+                             <button onclick="openEditNoteModal('${note.id}')" class="h-7 w-7 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-full flex items-center justify-center transition-colors">
+                                <i data-lucide="pencil" class="h-3.5 w-3.5"></i>
+                            </button>
+                            <button onclick="deleteNote('${note.id}')" class="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full flex items-center justify-center transition-colors">
+                                <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -1149,6 +1167,58 @@ window.deleteNote = function(id) {
     }
 }
 
+window.openEditTaskModal = function(e, id) {
+    if (e) e.stopPropagation();
+    const task = store.tasks.find(t => t.id === id);
+    if (!task) return;
+
+    editingId = id;
+    mode = 'task'; // helper for form submit
+    
+    document.getElementById('modal-title').textContent = 'Edit Task';
+    document.getElementById('task-fields').style.display = 'block';
+    document.getElementById('note-fields').style.display = 'none';
+    
+    const form = document.getElementById('editor-form');
+    form.title.value = task.title;
+    form.startTime.value = task.startTime;
+    form.endTime.value = task.endTime;
+    form.recurrence.value = task.recurrence;
+    
+    // Handle Review of Weekdays
+    const weekdaySelector = document.getElementById('weekday-selector');
+    weekdaySelector.style.display = task.recurrence === 'weekdays' ? 'block' : 'none';
+    
+    // Clear checkboxes first
+    form.querySelectorAll('input[name="days"]').forEach(cb => cb.checked = false);
+    if (task.days) {
+        task.days.forEach(day => {
+            const cb = form.querySelector(`input[name="days"][value="${day}"]`);
+            if (cb) cb.checked = true;
+        });
+    }
+
+    document.getElementById('editor-modal').showModal();
+}
+
+window.openEditNoteModal = function(id) {
+    const note = store.notes.find(n => n.id === id);
+    if (!note) return;
+
+    editingId = id;
+    mode = 'note';
+    
+    document.getElementById('modal-title').textContent = 'Edit Note';
+    document.getElementById('task-fields').style.display = 'none';
+    document.getElementById('note-fields').style.display = 'block';
+    
+    const form = document.getElementById('editor-form');
+    form.content.value = note.content;
+
+    document.getElementById('editor-modal').showModal();
+}
+
+
 // --- Listeners ---
 
 function setupListeners() {
@@ -1222,6 +1292,7 @@ function setupListeners() {
     });
 
     addTaskBtn.addEventListener('click', () => {
+        editingId = null;
         mode = 'task';
         document.getElementById('modal-title').textContent = 'New Task';
         document.getElementById('task-fields').style.display = 'block';
@@ -1240,6 +1311,7 @@ function setupListeners() {
     });
 
     addNoteBtn.addEventListener('click', () => {
+        editingId = null;
         mode = 'note';
         document.getElementById('modal-title').textContent = 'New Note';
         document.getElementById('task-fields').style.display = 'none';
@@ -1264,37 +1336,76 @@ function setupListeners() {
             const recurrence = formData.get('recurrence');
             const selectedDays = Array.from(formData.getAll('days')).map(Number);
             
-            const newTask = {
-                id: Date.now().toString(),
-                title: formData.get('title'),
-                startTime: formData.get('startTime'),
-                endTime: formData.get('endTime'),
-                completed: false,
-                recurrence: recurrence,
-                days: recurrence === 'weekdays' ? selectedDays : (recurrence === 'daily' ? [0,1,2,3,4,5,6] : []),
-                date: recurrence === 'none' ? store.user.selectedDate : null,
-                createdAt: Date.now()
-            };
-            if (newTask.title && newTask.startTime) {
-                store.tasks.push(newTask);
-                saveStore();
-                editorModal.close();
-                showToast('Task added successfully', 'success');
+            if (editingId) {
+                // UPDATE EXISTING TASK
+                const taskIndex = store.tasks.findIndex(t => t.id === editingId);
+                if (taskIndex > -1) {
+                    store.tasks[taskIndex] = {
+                        ...store.tasks[taskIndex],
+                        title: formData.get('title'),
+                        startTime: formData.get('startTime'),
+                        endTime: formData.get('endTime'),
+                        recurrence: recurrence,
+                        days: recurrence === 'weekdays' ? selectedDays : (recurrence === 'daily' ? [0,1,2,3,4,5,6] : []),
+                        // If switching from recurrence to none, set date to selected date? 
+                        // Or keep original date if it was none?
+                        // Simple logic: if 'none', set date to current view date if it wasn't already set?
+                        // Actually, better to just update fields. If recurrence changes, handle it.
+                        date: recurrence === 'none' ? (store.tasks[taskIndex].date || store.user.selectedDate) : null,
+                    };
+                    saveStore();
+                    editorModal.close();
+                    const action = editingId ? 'updated' : 'added'; // Should allow for edit msg
+                    showToast('Task updated successfully', 'success');
+                }
+            } else {
+                // CREATE NEW TASK
+                const newTask = {
+                    id: Date.now().toString(),
+                    title: formData.get('title'),
+                    startTime: formData.get('startTime'),
+                    endTime: formData.get('endTime'),
+                    completed: false,
+                    recurrence: recurrence,
+                    days: recurrence === 'weekdays' ? selectedDays : (recurrence === 'daily' ? [0,1,2,3,4,5,6] : []),
+                    date: recurrence === 'none' ? store.user.selectedDate : null,
+                    createdAt: Date.now()
+                };
+                if (newTask.title && newTask.startTime) {
+                    store.tasks.push(newTask);
+                    saveStore();
+                    editorModal.close();
+                    showToast('Task added successfully', 'success');
+                }
             }
         } else {
-            const newNote = {
-                id: Date.now().toString(),
-                content: formData.get('content'),
-                createdAt: new Date().toISOString()
-            };
-            if (newNote.content) {
-                store.notes.unshift(newNote);
-                saveStore();
-                editorModal.close();
-                showToast('Note added successfully', 'success');
+            if (editingId) {
+                // UPDATE NOTE
+                const noteIndex = store.notes.findIndex(n => n.id === editingId);
+                if (noteIndex > -1) {
+                    store.notes[noteIndex].content = formData.get('content');
+                    saveStore();
+                    editorModal.close();
+                    showToast('Note updated successfully', 'success');
+                }
+            } else {
+                // CREATE NOTE
+                const newNote = {
+                    id: Date.now().toString(),
+                    content: formData.get('content'),
+                    createdAt: new Date().toISOString()
+                };
+                if (newNote.content) {
+                    store.notes.unshift(newNote);
+                    saveStore();
+                    editorModal.close();
+                    showToast('Note added successfully', 'success');
+                }
             }
         }
+        editingId = null; // Reset
     });
+
 
     // Data Export/Import
     document.getElementById('export-btn').addEventListener('click', () => {
