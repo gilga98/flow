@@ -401,9 +401,17 @@ function handleNotificationAction(action, taskId) {
     if (action === 'complete') {
         const task = store.tasks.find(t => t.id === taskId);
         if (task) {
-            if (!task.completed) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const isCompleted = task.recurrence === 'none' ? task.completed : (task.completedDates && task.completedDates.includes(todayStr));
+
+            if (!isCompleted) {
                 // toggleTask logic reuse or direct manipulation
-                task.completed = true;
+                if (task.recurrence === 'none') {
+                    task.completed = true;
+                } else {
+                    if (!task.completedDates) task.completedDates = [];
+                    task.completedDates.push(todayStr);
+                }
                 
                 // Points logic
                 updatePoints(store.user.settings.notificationsEnabled ? 15 : 10, 'task', null); 
@@ -561,7 +569,7 @@ function renderUI() {
 
             // Shared Group Status
             const groupIsActive = isToday && cluster.some(t => currentTime >= t.startTime && currentTime <= t.endTime);
-            const groupIsCompleted = cluster.every(t => t.completed);
+            const groupIsCompleted = cluster.every(t => t.recurrence === 'none' ? t.completed : (t.completedDates && t.completedDates.includes(formattedSelectedDate)));
 
             // Container matches "timeline-item" structure
             // If multi: Use a scrollable container for cards
@@ -590,7 +598,7 @@ function renderUI() {
                 scrollContainer.style.touchAction = "pan-x"; 
 
                 cluster.forEach((task) => {
-                    const isCompleted = task.completed;
+                    const isCompleted = task.recurrence === 'none' ? task.completed : (task.completedDates && task.completedDates.includes(formattedSelectedDate));
                     const isActive = isToday && currentTime >= task.startTime && currentTime <= task.endTime;
                     const isSelected = selectedTaskIds.has(task.id);
                     const iconName = getTaskIcon(task.title);
@@ -629,7 +637,7 @@ function renderUI() {
             } else {
                 // Single Item (Original Logic slightly cleaned up)
                 const task = cluster[0];
-                const isCompleted = task.completed;
+                const isCompleted = task.recurrence === 'none' ? task.completed : (task.completedDates && task.completedDates.includes(formattedSelectedDate));
                 const isActive = groupIsActive; // Same for single
                 const isSelected = selectedTaskIds.has(task.id);
                 const iconName = getTaskIcon(task.title);
@@ -737,13 +745,15 @@ function updateCurrentTask() {
     });
     
     // Check for Day Complete (All tasks defined for today are marked completed)
-    const allDone = todayTasks.length > 0 && todayTasks.every(t => t.completed);
+    const allDone = todayTasks.length > 0 && todayTasks.every(t => {
+        return t.recurrence === 'none' ? t.completed : (t.completedDates && t.completedDates.includes(todayStr));
+    });
 
     if (current) {
         currentTaskDisplay.textContent = current.title;
         currentTaskTime.textContent = `${current.startTime} - ${current.endTime}`;
         
-        if (current.completed) {
+        if (current.recurrence === 'none' ? current.completed : (current.completedDates && current.completedDates.includes(todayStr))) {
              currentTaskDisplay.innerHTML = `<span class="line-through opacity-50">${current.title}</span> <span class="text-xs align-middle bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full no-underline ml-2">Done</span>`;
         }
     } else if (allDone) {
@@ -761,7 +771,7 @@ function updateCurrentTask() {
             // Check if day has ended (time is past last task)
             if (sortedTasks.length > 0 && currentTime > sortedTasks[sortedTasks.length-1].endTime) {
                  // Even if allDone is false (meaning some were skipped/not checked), if we are past the last task time:
-                 const anyLeft = sortedTasks.some(t => !t.completed);
+                 const anyLeft = sortedTasks.some(t => !(t.recurrence === 'none' ? t.completed : (t.completedDates && t.completedDates.includes(todayStr))));
                  if (!anyLeft) {
                      // This block might be redundant with allDone check above, but keeps logic safe for edge cases
                     currentTaskDisplay.textContent = "Day Complete";
@@ -906,9 +916,29 @@ window.toggleTask = function(e, id) {
     if (e) e.stopPropagation();
     const task = store.tasks.find(t => t.id === id);
     if (task) {
-        task.completed = !task.completed;
+        const selectedDate = store.user.selectedDate;
+        let isCompleted = false;
+
+        if (task.recurrence === 'none') {
+            task.completed = !task.completed;
+            isCompleted = task.completed;
+        } else {
+            if (!task.completedDates) task.completedDates = [];
+            const idx = task.completedDates.indexOf(selectedDate);
+            if (idx > -1) {
+                // Unchecking
+                task.completedDates.splice(idx, 1);
+                isCompleted = false;
+            } else {
+                // Checking
+                task.completedDates.push(selectedDate);
+                isCompleted = true;
+            }
+        }
         
-        if (task.completed) {
+        if (isCompleted) {
+             // Added 10 points
+             updatePoints(10, 'task', e);
         } else {
             // Unchecking - deduct points if they were likely awarded?
             // Simplification: Always deduct 10 to keep balance, but don't go negative on daily cap logic (handled in updatePoints)
