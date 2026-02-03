@@ -1,0 +1,286 @@
+:root {
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 3.9%;
+  --primary: 240 5.9% 10%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 240 5.9% 10%;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --ring: 240 4.9% 83.9%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Tab Button Styles */
+.tab-btn {
+    flex: 1;
+    color: hsl(var(--muted-foreground));
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-btn:hover {
+    color: hsl(var(--foreground));
+}
+
+.tab-btn.active { 
+    background-color: hsl(var(--background)); 
+    color: hsl(var(--foreground)); 
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Custom Utilities for Animations */
+.animate-in {
+    animation-duration: 300ms;
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+    animation-fill-mode: both;
+}
+
+.animate-out {
+    animation-duration: 300ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+    animation-fill-mode: both;
+}
+
+.fade-in { animation-name: fade-in; }
+.fade-out { animation-name: fade-out; }
+.zoom-in { animation-name: zoom-in; }
+.zoom-out { animation-name: zoom-out; }
+.slide-in-from-bottom-8 { animation-name: slide-in-from-bottom-8; }
+.slide-in-from-bottom-12 { animation-name: slide-in-from-bottom-12; }
+
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+@keyframes zoom-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes zoom-out {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.95); }
+}
+
+@keyframes slide-in-from-bottom-8 {
+    from { transform: translateY(2rem); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slide-in-from-bottom-12 {
+    from { transform: translateY(3rem); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* Timeline Custom Styles */
+.timeline-item {
+    transition: all 0.3s ease;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 24px;
+    bottom: -24px;
+    width: 2px;
+    background-color: hsl(var(--border) / 0.5);
+    z-index: 0;
+}
+
+.timeline-item:last-child::before {
+    display: none;
+}
+
+.timeline-dot {
+    position: absolute;
+    left: -6px;
+    top: 18px;
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    background-color: hsl(var(--background));
+    border: 2px solid hsl(var(--border));
+    z-index: 10;
+    transition: all 0.3s ease;
+}
+
+.timeline-item.active .timeline-dot {
+    background-color: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.2);
+}
+
+.timeline-item.completed .timeline-dot {
+    background-color: #22c55e;
+    border-color: #22c55e;
+}
+
+.timeline-item.completed .timeline-card {
+    opacity: 0.7;
+    background-color: hsl(var(--muted) / 0.5);
+}
+
+/* Switch Component */
+#notify-toggle.active {
+    background-color: hsl(var(--primary));
+}
+
+#notify-toggle.active #notify-toggle-slider {
+    transform: translateX(1.25rem);
+}
+
+/* Scrollbar refinement */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Day Scroller Styles */
+.day-btn {
+    flex: 0 0 56px;
+    height: 72px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+    transition: all 0.3s ease;
+}
+
+.day-btn.active {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary));
+    box-shadow: 0 10px 15px -3px hsl(var(--primary) / 0.2);
+    transform: translateY(-2px);
+}
+
+.day-btn .day-name {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.7;
+}
+
+.day-btn.active .day-name {
+    opacity: 0.9;
+}
+
+.day-btn .day-date {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+/* Scrollbar Utility */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* Selection Mode */
+.is-selecting .timeline-dot {
+    display: none;
+}
+
+.selection-circle {
+    position: absolute;
+    left: -8px;
+    top: 18px;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    border: 2px solid hsl(var(--border));
+    background-color: hsl(var(--background));
+    z-index: 20;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.is-selecting .selection-circle {
+    display: flex;
+}
+
+.selection-circle.selected {
+    background-color: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+
+.is-selecting .timeline-card {
+    cursor: pointer;
+}
+
+/* Bulk Bar Show */
+#bulk-action-bar.show {
+    transform: translate(-50%, -24px);
+}
+
+/* Hiding default dialog styles */
+dialog::backdrop {
+    background-color: transparent;
+}
