@@ -66,18 +66,38 @@ self.addEventListener('fetch', (e) => {
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
+    
+    const action = event.action;
+    const taskId = event.notification.data ? event.notification.data.taskId : null;
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-            // If a window is already open, focus it
-            for (const client of clientList) {
-                if (client.url.includes(self.registration.scope) && 'focus' in client) {
-                    return client.focus();
-                }
-            }
+            // Find existing window
+            const client = clientList.find(c => 
+                c.url.includes(self.registration.scope) && 'focus' in c
+            );
+
+            if (client) {
+                // Focus the existing window
+                return client.focus().then(() => {
+                    if (action && taskId) {
+                        // Send message to client to handle action
+                        client.postMessage({
+                            type: 'ACTION',
+                            action: action,
+                            taskId: taskId
+                        });
+                    }
+                });
+            } 
+            
             // Otherwise open a new window
             if (clients.openWindow) {
-                return clients.openWindow('./');
+                let url = './';
+                if (action && taskId) {
+                    url = `./?action=${action}&taskId=${taskId}`;
+                }
+                return clients.openWindow(url);
             }
         })
     );

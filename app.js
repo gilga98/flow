@@ -371,6 +371,58 @@ function init() {
         checkDailyWaterReset();
         checkNotifications();
     }, 60000); 
+
+    // Handle Service Worker Messages (for Actions)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            console.log("Message from SW:", event.data);
+            if (event.data && event.data.type === 'ACTION') {
+                handleNotificationAction(event.data.action, event.data.taskId);
+            }
+        });
+    }
+
+    // Handle URL Params (for Cold Start Actions)
+    const urlParams = new URLSearchParams(window.location.search);
+    const action = urlParams.get('action');
+    const taskId = urlParams.get('taskId');
+    
+    if (action && taskId) {
+        // Clear params to avoid loop/re-trigger on refresh
+        window.history.replaceState({}, document.title, window.location.pathname);
+        // Wait a tick for store to load
+        setTimeout(() => handleNotificationAction(action, taskId), 500);
+    }
+}
+
+function handleNotificationAction(action, taskId) {
+    if (!taskId) return;
+
+    if (action === 'complete') {
+        const task = store.tasks.find(t => t.id === taskId);
+        if (task) {
+            if (!task.completed) {
+                // toggleTask logic reuse or direct manipulation
+                task.completed = true;
+                
+                // Points logic
+                updatePoints(store.user.settings.notificationsEnabled ? 15 : 10, 'task', null); 
+                
+                saveStore();
+                showToast(`Marked "${task.title}" as complete!`, 'success');
+                renderUI(); // updates view if open
+            } else {
+                showToast(`"${task.title}" was already completed.`, 'info');
+            }
+        }
+    } else if (action === 'snooze') {
+        const task = store.tasks.find(t => t.id === taskId);
+        if (task) {
+            showToast(`Snoozed "${task.title}" for 5 minutes.`, 'info');
+            // Logic to actually snooze (e.g. ignore next notification) could go here
+            // For now, it just acknowledges user input.
+        }
+    }
 }
 
 // --- Rendering ---
@@ -1348,9 +1400,9 @@ function checkNotifications() {
         
         // Prevent duplicate notifications? (Basic debounce could be added here if needed, but per-minute check is usually fine)
         if (taskMinutes - currentMinutes === 5) {
-            showNotification(`Up Next: ${task.title}`, `Starting in 5 minutes (${task.startTime})`);
+            showNotification(`Up Next: ${task.title}`, `Starting in 5 minutes (${task.startTime})`, task.id);
         } else {
-            showNotification(`Starting: ${task.title}`, `It's time for ${task.title}`);
+            showNotification(`Starting: ${task.title}`, `It's time for ${task.title}`, task.id);
         }
     });
 
@@ -1391,19 +1443,32 @@ function checkNotifications() {
     }
 }
 
-function showNotification(title, body) {
+function showNotification(title, body, taskId = null) {
+    // Check permission
     if (Notification.permission === 'granted') {
         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
              navigator.serviceWorker.ready.then(registration => {
-                registration.showNotification(title, {
+                const options = {
                     body: body,
                     icon: 'logo-square.svg', // Updated icon
                     vibrate: [200, 100, 200],
                     badge: 'logo-square.svg',
-                    tag: title // Simple dedup tag
-                });
+                    tag: title, // Simple dedup tag
+                    data: { taskId: taskId }
+                };
+
+                // Add Actions if taskId is present
+                if (taskId) {
+                    options.actions = [
+                        { action: 'complete', title: 'Complete' },
+                        { action: 'snooze', title: 'Snooze 5m' }
+                    ];
+                }
+
+                registration.showNotification(title, options);
             });
         } else {
+            // Fallback for non-SW context (e.g. simple desktop test)
             const n = new Notification(title, { body, icon: 'logo-square.svg', tag: title });
             n.onclick = () => { n.close(); window.focus(); };
         }
