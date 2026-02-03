@@ -116,7 +116,20 @@
         <header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div class="container flex h-14 max-w-screen-2xl items-center justify-between px-4 mx-auto">
                 <div class="flex items-center gap-2 font-bold text-xl tracking-tight">
-                    <img src="logo-horizontal.svg" alt="SproutList" class="h-8 w-auto">
+                    <svg class="h-8 w-auto text-foreground" width="800" height="200" viewBox="0 0 800 200" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="SproutList">
+                      <defs>
+                        <style>
+                          @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+                        </style>
+                      </defs>
+                      <g transform="translate(50, 25) scale(0.3)">
+                        <path d="M136 264L216 344L340 180" stroke="#16A34A" stroke-width="60" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M340 180C340 180 380 140 420 160C420 160 400 200 340 180Z" fill="#22C55E"/>
+                        <path d="M340 180C340 180 320 120 280 130C280 130 300 170 340 180Z" fill="#4ADE80"/>
+                      </g>
+                    
+                      <text x="220" y="115" font-family="'Montserrat', sans-serif" font-weight="bold" font-size="80" fill="currentColor">SproutList</text>
+                    </svg>
                 </div>
                 <div class="flex items-center gap-3">
                     <div id="reward-container" class="flex flex-col items-end gap-1 cursor-pointer hover:opacity-80 transition-opacity" onclick="openRewardsProfile()">
