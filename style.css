@@ -176,11 +176,13 @@ body {
 }
 
 /* Switch Component */
-#notify-toggle.active {
+#notify-toggle.active,
+#water-notify-toggle.active {
     background-color: hsl(var(--primary));
 }
 
-#notify-toggle.active #notify-toggle-slider {
+#notify-toggle.active #notify-toggle-slider,
+#water-notify-toggle.active #water-notify-slider {
     transform: translateX(1.25rem);
 }
 

@@ -1095,7 +1095,11 @@ function showNotification(title, body) {
             });
         } else {
             // Fallback for non-SW contexts or localhost
-            new Notification(title, { body, icon: '/icon.png' });
+            const n = new Notification(title, { body, icon: '/icon.png' });
+            n.onclick = () => {
+                n.close();
+                window.focus();
+            };
         }
     }
     // Also show toast inside app if visible
@@ -1434,12 +1438,10 @@ function setupWater() {
 
     // Notify Toggle
     const toggle = document.getElementById('water-notify-toggle');
-    const slider = document.getElementById('water-notify-slider');
     
     // Init state
     if (store.user.water.reminders) {
         toggle.classList.add('active');
-        slider.classList.add('translate-x-5');
     }
 
     toggle.addEventListener('click', () => {
@@ -1448,12 +1450,7 @@ function setupWater() {
         
         toggle.classList.toggle('active', isActive);
         if (isActive) {
-            slider.classList.add('translate-x-5');
-            slider.classList.remove('translate-x-0');
              Notification.requestPermission();
-        } else {
-            slider.classList.remove('translate-x-5');
-            slider.classList.add('translate-x-0');
         }
         saveStore();
     });
@@ -1615,6 +1612,63 @@ function addMealSchedule() {
     saveStore();
     showToast(`Added ${addedCount} recurring meal tasks!`, 'success');
 }
+
+// --- PWA Install Logic ---
+
+let deferredPrompt;
+const installBanner = document.getElementById('install-banner');
+const installBtn = document.getElementById('install-btn');
+const dismissBtn = document.getElementById('install-dismiss-btn');
+
+// Check if already installed (standalone mode)
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || document.referrer.includes('android-app://');
+
+if (!isStandalone) {
+    window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent the mini-infobar from appearing on mobile
+        e.preventDefault();
+        // Stash the event so it can be triggered later.
+        deferredPrompt = e;
+        // Update UI notify the user they can install the PWA
+        showInstallBanner();
+    });
+}
+
+function showInstallBanner() {
+    if (installBanner) {
+        // Only show if not dismissed recently? For now, just show.
+        installBanner.classList.remove('translate-y-32');
+    }
+}
+
+if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+        if (!deferredPrompt) return;
+        // Hide the app provided install promotion
+        if (installBanner) installBanner.classList.add('translate-y-32');
+        // Show the install prompt
+        deferredPrompt.prompt();
+        // Wait for the user to respond to the prompt
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`User response to the install prompt: ${outcome}`);
+        // We've used the prompt, and can't use it again, throw it away
+        deferredPrompt = null;
+    });
+}
+
+if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
+        if (installBanner) installBanner.classList.add('translate-y-32');
+    });
+}
+
+window.addEventListener('appinstalled', () => {
+    // Hide the app-provided install promotion
+    if (installBanner) installBanner.classList.add('translate-y-32');
+    // Clear the deferredPrompt so it can be garbage collected
+    deferredPrompt = null;
+    showToast('App installed successfully!', 'success');
+});
 
 // Start the app
 init();

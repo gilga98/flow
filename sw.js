@@ -33,6 +33,7 @@ self.addEventListener('activate', (e) => {
     );
 });
 
+
 self.addEventListener('fetch', (e) => {
     // Network First Strategy
     e.respondWith(
@@ -60,5 +61,24 @@ self.addEventListener('fetch', (e) => {
                 // Network failed, try cache
                 return caches.match(e.request);
             })
+    );
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+            // If a window is already open, focus it
+            for (const client of clientList) {
+                if (client.url.includes(self.registration.scope) && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            // Otherwise open a new window
+            if (clients.openWindow) {
+                return clients.openWindow('./');
+            }
+        })
     );
 });
