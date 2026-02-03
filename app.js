@@ -728,6 +728,7 @@ function confirmDelete() {
                 task.deletedDates.push(store.user.selectedDate);
             }
             saveStore();
+            showToast('Task deleted', 'success');
         }
         pendingDeleteId = null;
         document.getElementById('delete-modal').close();
@@ -755,6 +756,15 @@ function bulkDelete() {
         store.tasks = store.tasks.filter(t => !selectedTaskIds.has(t.id));
         setSelectionMode(false);
         saveStore();
+        showToast('Tasks deleted', 'success');
+    }
+}
+
+window.deleteNote = function(id) {
+    if(confirm('Delete this note?')) {
+        store.notes = store.notes.filter(n => n.id !== id);
+        saveStore();
+        showToast('Note deleted', 'success');
     }
 }
 
@@ -791,6 +801,7 @@ function setupListeners() {
         store.user.settings.darkMode = !store.user.settings.darkMode;
         applyTheme();
         saveStore();
+        showToast(store.user.settings.darkMode ? 'Dark mode enabled' : 'Light mode enabled');
     });
 
     // Notification Toggle
@@ -801,6 +812,9 @@ function setupListeners() {
         notifyToggle.classList.toggle('active', enabled);
         if (enabled) {
             Notification.requestPermission();
+            showToast('Notifications enabled', 'success');
+        } else {
+            showToast('Notifications disabled');
         }
         saveStore();
     });
@@ -883,6 +897,7 @@ function setupListeners() {
                 store.tasks.push(newTask);
                 saveStore();
                 editorModal.close();
+                showToast('Task added successfully', 'success');
             }
         } else {
             const newNote = {
@@ -894,6 +909,7 @@ function setupListeners() {
                 store.notes.unshift(newNote);
                 saveStore();
                 editorModal.close();
+                showToast('Note added successfully', 'success');
             }
         }
     });
@@ -1609,8 +1625,12 @@ function addMealSchedule() {
         addedCount++;
     });
     
-    saveStore();
-    showToast(`Added ${addedCount} recurring meal tasks!`, 'success');
+    if (addedCount > 0) {
+        saveStore();
+        showToast(`Added ${addedCount} recurring meal tasks!`, 'success');
+    } else {
+        showToast('Meal tasks already added!', 'info');
+    }
 }
 
 // --- PWA Install Logic ---
