@@ -979,16 +979,34 @@ function renderForestGrid() {
 }
 
 window.toggleRewardInfo = function() {
-    const card = document.getElementById('reward-info-card');
-    if (card) {
-        card.classList.toggle('hidden');
+    const infoCard = document.getElementById('reward-info-card');
+    const historyCard = document.getElementById('history-info-card');
+    
+    if (infoCard) {
+        const willShow = infoCard.classList.contains('hidden');
+        infoCard.classList.toggle('hidden');
+        
+        // If showing info, hide history
+        if (willShow && historyCard) {
+            historyCard.classList.add('hidden');
+        }
     }
 }
 
 window.viewSaplingHistory = function() {
-    // For now, toggle visibility or switch view. 
-    // MVP: Just show toast. Real history log could be a separate modal or view.
-    showToast('Full history coming soon! Check your Forest Grid.', 'info');
+    const historyCard = document.getElementById('history-info-card');
+    const infoCard = document.getElementById('reward-info-card');
+    
+    if (historyCard) {
+        const willShow = historyCard.classList.contains('hidden');
+        historyCard.classList.toggle('hidden');
+        
+        // If showing history, hide info
+        if (willShow && infoCard) {
+            infoCard.classList.add('hidden');
+        }
+    }
+    // MVP: Removed toast entirely as it was hidden behind modal
 }
 
 
