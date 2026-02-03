@@ -119,6 +119,13 @@ body {
     to { transform: translateY(0); opacity: 1; }
 }
 
+.slide-in-from-bottom-4 { animation-name: slide-in-from-bottom-4; }
+
+@keyframes slide-in-from-bottom-4 {
+    from { transform: translateY(1rem); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
 /* Timeline Custom Styles */
 .timeline-item {
     transition: all 0.3s ease;

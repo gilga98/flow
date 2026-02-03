@@ -129,15 +129,19 @@
             </section>
 
             <!-- Tabs -->
-            <div class="sticky top-[72px] z-40 bg-background/80 backdrop-blur-sm -mx-4 px-4 py-2 mb-8">
-                <div class="flex w-full items-center p-1 bg-muted rounded-lg border border-border/50">
-                    <button data-tab="timeline" class="tab-btn active inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
+            <!-- Tabs -->
+            <div class="mb-6">
+                <div class="flex w-full items-center p-1 bg-muted rounded-lg border border-border/50 overflow-x-auto no-scrollbar">
+                    <button data-tab="timeline" class="tab-btn active min-w-fit flex-1 inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
                         <i data-lucide="list-todo" class="h-4 w-4 mr-2"></i>Timeline
                     </button>
-                    <button data-tab="notes" class="tab-btn inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
+                    <button data-tab="notes" class="tab-btn min-w-fit flex-1 inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
                         <i data-lucide="brain" class="h-4 w-4 mr-2"></i>Notes
                     </button>
-                    <button data-tab="settings" class="tab-btn inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
+                    <button data-tab="utilities" class="tab-btn min-w-fit flex-1 inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
+                        <i data-lucide="zap" class="h-4 w-4 mr-2"></i>Utilities
+                    </button>
+                    <button data-tab="settings" class="tab-btn min-w-fit flex-1 inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
                         <i data-lucide="settings-2" class="h-4 w-4 mr-2"></i>Settings
                     </button>
                 </div>
@@ -199,6 +203,109 @@
                 </div>
             </section>
 
+            <!-- Utilities View -->
+            <section id="view-utilities" class="tab-content hidden space-y-6">
+                <!-- Header & Toggle -->
+                <div class="flex items-center justify-between gap-2 overflow-hidden">
+                    <h2 class="text-2xl font-bold tracking-tight shrink-0">Utilities</h2>
+                    <div class="bg-muted p-1 rounded-lg flex items-center overflow-x-auto no-scrollbar shrink">
+                        <button id="util-tab-focus" class="px-3 py-1 rounded-md text-xs font-bold shadow-sm bg-background text-foreground transition-all whitespace-nowrap">Focus</button>
+                        <button id="util-tab-breath" class="px-3 py-1 rounded-md text-xs font-bold text-muted-foreground transition-all hover:text-foreground whitespace-nowrap">Breath</button>
+                        <button id="util-tab-water" class="px-3 py-1 rounded-md text-xs font-bold text-muted-foreground transition-all hover:text-foreground whitespace-nowrap">Hydrate</button>
+                    </div>
+                </div>
+
+                <!-- Focus Timer -->
+                <div id="util-focus" class="flex flex-col items-center space-y-8 animate-in fade-in slide-in-from-bottom-4">
+                    <div class="text-center space-y-1">
+                        <h3 id="timer-task-label" class="text-lg font-medium text-muted-foreground px-4 truncate max-w-xs">Ready to Focus?</h3>
+                        <div id="timer-display" class="text-7xl font-black font-mono tracking-tighter tabular-nums variant-numeric-slash-zero">25:00</div>
+                    </div>
+                    
+                    <div class="relative h-64 w-64 flex items-center justify-center">
+                        <!-- Background Ring -->
+                        <div class="absolute inset-0 rounded-full border-[6px] border-muted"></div>
+                         <!-- Progress Ring -->
+                        <svg class="absolute inset-0 -rotate-90 transform h-64 w-64" viewBox="0 0 100 100">
+                            <!-- 2*pi*r where r=46 is approx 289 -->
+                            <circle cx="50" cy="50" r="46" fill="transparent" stroke="currentColor" stroke-width="6" stroke-linecap="round" class="text-primary transition-all duration-1000 ease-linear" stroke-dasharray="289" stroke-dashoffset="0" id="timer-ring"></circle>
+                        </svg>
+                        
+                        <button id="timer-toggle-btn" class="h-24 w-24 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all z-10">
+                            <i data-lucide="play" class="h-10 w-10 fill-current pl-1"></i>
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <button id="timer-reset-btn" class="h-12 w-12 rounded-full border border-input flex items-center justify-center hover:bg-accent hover:text-accent-foreground transition-all" title="Reset">
+                            <i data-lucide="rotate-ccw" class="h-5 w-5"></i>
+                        </button>
+                         <button id="timer-finish-btn" class="h-12 w-12 rounded-full border border-input flex items-center justify-center hover:bg-accent hover:text-accent-foreground transition-all opacity-50 pointer-events-none" title="Finish Early">
+                            <i data-lucide="check" class="h-5 w-5"></i>
+                        </button>
+                    </div>
+
+                    <!-- Presets -->
+                    <div class="grid grid-cols-3 gap-2 w-full max-w-xs">
+                        <button class="timer-preset py-2 px-3 rounded-lg border border-border bg-card hover:border-primary/50 text-xs font-semibold transition-all data-[active=true]:bg-primary data-[active=true]:text-primary-foreground" data-time="25">Focus</button>
+                        <button class="timer-preset py-2 px-3 rounded-lg border border-border bg-card hover:border-primary/50 text-xs font-semibold transition-all data-[active=true]:bg-primary data-[active=true]:text-primary-foreground" data-time="5">Short</button>
+                        <button class="timer-preset py-2 px-3 rounded-lg border border-border bg-card hover:border-primary/50 text-xs font-semibold transition-all data-[active=true]:bg-primary data-[active=true]:text-primary-foreground" data-time="15">Long</button>
+                    </div>
+                </div>
+
+                <!-- Breath Utility -->
+                <div id="util-breath" class="hidden flex flex-col items-center justify-center space-y-12 py-10 animate-in fade-in slide-in-from-bottom-4">
+                    <div class="relative flex items-center justify-center">
+                         <div id="breath-circle-bv" class="absolute inset-0 rounded-full bg-primary/20 blur-xl transition-all duration-[4000ms] ease-in-out"></div>
+                         <div id="breath-circle" class="h-48 w-48 rounded-full bg-primary/10 border-4 border-primary flex items-center justify-center transition-all duration-[4000ms] ease-in-out scale-100 z-10 shadow-[0_0_30px_rgba(var(--primary),0.3)]">
+                             <span id="breath-text" class="text-xl font-bold tracking-widest uppercase text-primary transition-opacity duration-500">Ready</span>
+                        </div>
+                    </div>
+                    <p id="breath-guide" class="text-muted-foreground text-sm font-medium h-4">Take a deep breath...</p>
+                    <button id="breath-toggle-btn" class="px-8 py-3 rounded-full bg-primary text-primary-foreground font-bold shadow-lg hover:bg-primary/90 transition-all">Start Breathing</button>
+                </div>
+
+                <!-- Water Utility -->
+                <div id="util-water" class="hidden flex flex-col items-center space-y-8 animate-in fade-in slide-in-from-bottom-4">
+                     <div class="text-center space-y-1">
+                        <h3 class="text-lg font-medium text-muted-foreground">Daily Hydration</h3>
+                        <div class="text-4xl font-black tracking-tight"><span id="water-count">0</span> <span class="text-muted-foreground text-2xl font-bold">/ <span id="water-goal">8</span> cups</span></div>
+                    </div>
+
+                    <!-- Water Visual -->
+                    <div class="relative h-64 w-64 rounded-full border-4 border-blue-100 bg-blue-50/20 overflow-hidden flex items-end justify-center shadow-inner">
+                        <div id="water-level" class="w-full bg-blue-500 transition-all duration-1000 ease-in-out relative" style="height: 0%">
+                             <div class="absolute top-0 left-0 w-full h-4 bg-blue-400/50 animate-pulse"></div>
+                        </div>
+                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <i data-lucide="droplet" class="h-24 w-24 text-blue-200/50 fill-blue-200/20"></i>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-6">
+                        <button id="water-remove-btn" class="h-12 w-12 rounded-full border border-input bg-card hover:bg-accent flex items-center justify-center transition-all active:scale-95">
+                            <i data-lucide="minus" class="h-5 w-5"></i>
+                        </button>
+                        <button id="water-add-btn" class="h-20 w-20 rounded-full bg-blue-500 text-white shadow-xl shadow-blue-500/30 hover:bg-blue-600 flex items-center justify-center transition-all hover:scale-105 active:scale-95">
+                            <i data-lucide="plus" class="h-8 w-8"></i>
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-3 p-4 bg-muted/50 rounded-xl w-full max-w-xs">
+                         <div class="p-2 bg-background rounded-lg border border-border shadow-sm">
+                            <i data-lucide="bell" class="h-4 w-4 text-blue-500"></i>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-semibold">Hourly Reminders</p>
+                            <p class="text-xs text-muted-foreground">Nudge if inactive</p>
+                        </div>
+                        <button id="water-notify-toggle" class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background bg-input">
+                            <span class="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform translate-x-0" id="water-notify-slider"></span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
             <!-- Settings View -->
             <section id="view-settings" class="tab-content hidden space-y-8">
                 <div class="space-y-4">
@@ -216,6 +323,35 @@
                             <button id="clear-data-btn" class="w-full inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2 transition-colors">
                                 <i data-lucide="trash-2" class="h-4 w-4 mr-2"></i> Clear All Data
                             </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <h2 class="text-xl font-bold tracking-tight">Routine</h2>
+                    <div class="rounded-xl border bg-card p-6 space-y-4 shadow-sm">
+                         <div class="grid grid-cols-2 gap-4">
+                            <div class="space-y-2">
+                                <label class="text-sm font-semibold flex items-center gap-2">
+                                    <i data-lucide="sun" class="h-4 w-4 text-orange-500"></i>
+                                    Wake Time
+                                </label>
+                                <input type="time" id="setting-wake-time" class="flex h-10 w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-sm font-semibold flex items-center gap-2">
+                                    <i data-lucide="moon" class="h-4 w-4 text-indigo-500"></i>
+                                    Sleep Time
+                                </label>
+                                <input type="time" id="setting-sleep-time" class="flex h-10 w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                            </div>
+                        </div>
+                        
+                        <div class="pt-2">
+                             <button id="add-meal-schedule-btn" class="w-full inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-secondary/50 hover:bg-secondary text-secondary-foreground h-10 px-4 py-2 transition-colors">
+                                <i data-lucide="utensils" class="h-4 w-4 mr-2"></i> Add Meal Schedule
+                            </button>
+                             <p class="text-[10px] text-muted-foreground text-center pt-1">Adds Breakfast (8am), Lunch (1pm), Dinner (8pm)</p>
                         </div>
                     </div>
                 </div>

@@ -11,14 +11,23 @@ const DB_KEY = 'timetable_db';
 const DEFAULT_STATE = {
     tasks: [], // { id, title, startTime, endTime, completed, recurrence, days, date, deletedDates: [] }
     notes: [], // { id, content, tags, createdAt }
+    hydrationLogs: {}, // { "YYYY-MM-DD": count }
     user: {
         points: 0,
         streak: 0,
         lastActiveDate: new Date().toISOString().split('T')[0],
         selectedDate: new Date().toISOString().split('T')[0], // Track viewed date
+        water: {
+            // current: 0, // DEPRECATED - moved to hydrationLogs
+            goal: 8,
+            lastDrink: Date.now(),
+            reminders: false
+        },
         settings: {
             notificationsEnabled: false,
-            darkMode: false
+            darkMode: false,
+            wakeTime: '07:00',
+            sleepTime: '23:00'
         }
     }
 };
@@ -71,16 +80,29 @@ function loadStore() {
                 });
             }
             // Merge with default to ensure new schema fields exist
-            return { 
+            const merged = { 
                 ...DEFAULT_STATE, 
                 ...parsed, 
                 user: { 
                     ...DEFAULT_STATE.user, 
                     ...parsed.user, 
                     selectedDate: parsed.user?.selectedDate || DEFAULT_STATE.user.selectedDate,
+                    water: { ...DEFAULT_STATE.user.water, ...parsed.user?.water },
                     settings: { ...DEFAULT_STATE.user.settings, ...parsed.user?.settings } 
-                } 
+                },
+                hydrationLogs: parsed.hydrationLogs || {}
             };
+
+            // Migration: Move old water.current to hydrationLogs (if applicable)
+            // If we have a 'current' value but no log for today, save it.
+            if (parsed.user?.water?.current !== undefined && !merged.hydrationLogs[new Date().toISOString().split('T')[0]]) {
+                const today = new Date().toISOString().split('T')[0];
+                if (parsed.user.water.date === today) {
+                     merged.hydrationLogs[today] = parsed.user.water.current;
+                }
+            }
+            
+            return merged;
         }
     } catch (e) {
         console.error('Failed to load store', e);
@@ -166,8 +188,21 @@ function init() {
     applyTheme();
     renderUI();
     setupListeners();
+    setupUtilities();
     checkNotifications();
-    setInterval(updateCurrentTask, 60000); // Update every minute
+    
+    // Initial checks
+    checkWakeUpBounty();
+    checkDailyWaterReset();
+    
+    // Heartbeat every minute
+    setInterval(() => {
+        updateCurrentTask();
+        // Ensure these run even if app is left open overnight
+        checkWakeUpBounty();
+        checkDailyWaterReset();
+        checkNotifications();
+    }, 60000); 
 }
 
 // --- Rendering ---
@@ -185,7 +220,40 @@ function renderUI() {
 
     // 2. Timeline
     renderWeeklyScroller();
+    renderWeeklyScroller();
     timelineList.innerHTML = '';
+    
+    // Inject Hydration Widget for Selected Date
+    const timelineHydration = document.createElement('div');
+    const selectedDateStr = store.user.selectedDate;
+    const currentWater = store.hydrationLogs[selectedDateStr] || 0;
+    const isTodayForWater = selectedDateStr === new Date().toISOString().split('T')[0];
+    
+    timelineHydration.className = "mb-6 p-4 rounded-2xl bg-blue-50/50 border border-blue-100 flex items-center justify-between";
+    timelineHydration.innerHTML = `
+        <div class="flex items-center gap-3">
+            <div class="h-10 w-10 rounded-full bg-blue-100/50 flex items-center justify-center text-blue-500">
+                <i data-lucide="droplet" class="h-5 w-5 fill-current"></i>
+            </div>
+            <div>
+                 <p class="text-sm font-bold text-foreground">Hydration</p>
+                 <p class="text-xs text-muted-foreground font-medium">${currentWater} / ${store.user.water.goal} cups</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            ${isTodayForWater ? `
+            <button onclick="modifyWater(-1)" class="h-8 w-8 rounded-full bg-background border border-border flex items-center justify-center hover:bg-accent transition-colors">
+                <i data-lucide="minus" class="h-4 w-4"></i>
+            </button>
+            <button onclick="modifyWater(1)" class="h-8 w-8 rounded-full bg-blue-500 text-white shadow-lg shadow-blue-500/20 flex items-center justify-center hover:bg-blue-600 transition-colors active:scale-95">
+                <i data-lucide="plus" class="h-4 w-4"></i>
+            </button>
+            ` : `
+            <span class="text-xs font-bold text-muted-foreground bg-secondary px-3 py-1 rounded-full">History</span>
+            `}
+        </div>
+    `;
+    timelineList.appendChild(timelineHydration);
     
     // Filter tasks for the selected date
     const selectedDate = new Date(store.user.selectedDate);
@@ -238,12 +306,14 @@ function renderUI() {
             // Filter out if this specific date is in deletedDates
             if (task.deletedDates && task.deletedDates.includes(formattedSelectedDate)) return;
 
+            const iconName = getTaskIcon(task.title);
+
             const el = document.createElement('div');
             el.className = `timeline-item relative pl-8 pb-8 transition-all duration-500 animate-in fade-in slide-in-from-bottom-4 ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''}`;
             el.style.animationDelay = `${index * 50}ms`;
 
             el.innerHTML = `
-                <div class="timeline-dot"></div>
+                <div class="timeline-dot ${iconName ? 'bg-primary border-primary' : ''}"></div>
                 <div class="selection-circle ${isSelected ? 'selected' : ''}">
                     <i data-lucide="check" class="h-3 w-3"></i>
                 </div>
@@ -252,7 +322,10 @@ function renderUI() {
                     <div class="flex items-center justify-between gap-4">
                         <div class="flex flex-col gap-1 overflow-hidden pointer-events-none">
                             <div class="flex items-center gap-2">
-                                <span class="text-[10px] font-bold tracking-wider text-muted-foreground uppercase py-0.5 px-2 bg-secondary rounded-full">${task.startTime} - ${task.endTime}</span>
+                                <span class="text-[10px] font-bold tracking-wider text-muted-foreground uppercase py-0.5 px-2 bg-secondary rounded-full flex items-center gap-1">
+                                    ${iconName ? `<i data-lucide="${iconName}" class="h-3 w-3"></i>` : ''}
+                                    ${task.startTime} - ${task.endTime}
+                                </span>
                                 ${isActive ? '<span class="flex h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>' : ''}
                                 ${task.recurrence !== 'none' ? `<span class="text-[9px] font-bold text-primary/60 uppercase">${task.recurrence === 'daily' ? 'Daily' : 'Repeats'}</span>` : ''}
                             </div>
@@ -261,6 +334,9 @@ function renderUI() {
                         <div class="flex items-center gap-2 shrink-0">
                             <button onclick="toggleTask(event, '${task.id}')" class="h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${isSelectionMode ? 'hidden' : ''} ${isCompleted ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20 scale-110' : 'bg-background hover:bg-accent border-input hover:border-primary hover:scale-105'}">
                                 ${isCompleted ? '<i data-lucide="check" class="h-5 w-5"></i>' : '<i data-lucide="circle" class="h-5 w-5 text-muted-foreground/50"></i>'}
+                            </button>
+                            <button onclick="openFocusMode('${task.id}')" class="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full flex items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}" title="Focus">
+                                <i data-lucide="target" class="h-4 w-4"></i>
                             </button>
                             <button onclick="openDeleteModal(event, '${task.id}')" class="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full flex items-center justify-center transition-colors ${isSelectionMode ? 'hidden' : ''}">
                                 <i data-lucide="trash-2" class="h-4 w-4"></i>
@@ -718,6 +794,31 @@ function setupListeners() {
             location.reload();
         }
     });
+
+    // Routine Settings
+    const wakeInput = document.getElementById('setting-wake-time');
+    const sleepInput = document.getElementById('setting-sleep-time');
+    
+    if (wakeInput) {
+        wakeInput.value = store.user.settings.wakeTime || '07:00';
+        wakeInput.addEventListener('change', (e) => {
+            store.user.settings.wakeTime = e.target.value;
+            saveStore();
+        });
+    }
+
+    if (sleepInput) {
+        sleepInput.value = store.user.settings.sleepTime || '23:00';
+        sleepInput.addEventListener('change', (e) => {
+            store.user.settings.sleepTime = e.target.value;
+            saveStore();
+        });
+    }
+
+    const addMealBtn = document.getElementById('add-meal-schedule-btn');
+    if (addMealBtn) {
+        addMealBtn.addEventListener('click', addMealSchedule);
+    }
 }
 
 function applyTheme() {
@@ -731,26 +832,60 @@ function applyTheme() {
 function checkNotifications() {
     if (!store.user.settings.notificationsEnabled) return;
     
-    // Simple check every minute
-    setInterval(() => {
-        const now = new Date();
-        const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-        const todayDay = now.getDay();
-        const todayStr = now.toISOString().split('T')[0];
+    // Single check (called by main loop)
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const todayDay = now.getDay();
+    const todayStr = now.toISOString().split('T')[0];
+    
+    const taskStarting = store.tasks.find(t => {
+        if (t.startTime !== currentTime) return false;
         
-        const taskStarting = store.tasks.find(t => {
-            if (t.startTime !== currentTime) return false;
-            
-            if (t.recurrence === 'none') return t.date === todayStr;
-            if (t.recurrence === 'daily') return true;
-            if (t.recurrence === 'weekdays') return t.days && t.days.includes(todayDay);
-            return false;
-        });
-        
-        if (taskStarting) {
-            showNotification(`Starting: ${taskStarting.title}`, `It's time for ${taskStarting.title}`);
+        if (t.recurrence === 'none') return t.date === todayStr;
+        if (t.recurrence === 'daily') return true;
+        if (t.recurrence === 'weekdays') return t.days && t.days.includes(todayDay);
+        return false;
+    });
+    
+    if (taskStarting) {
+        showNotification(`Starting: ${taskStarting.title}`, `It's time for ${taskStarting.title}`);
+    }
+
+    // Water Reminder
+    if (store.user.water.reminders) {
+        const lastDrink = store.user.water.lastDrink || 0;
+        // 1 hour = 3600000 ms
+        if (Date.now() - lastDrink > 3600000) {
+                // Only remind if active hours (e.g. 9am to 9pm) to avoid sleep disturbance
+                const hour = now.getHours();
+                if (hour >= 9 && hour <= 21) {
+                    
+                    // Check if already reached goal?
+                    const current = store.hydrationLogs[todayStr] || 0;
+                    if (current >= store.user.water.goal) return; // Don't nag if goal met
+
+                    if (now.getMinutes() === 0) {
+                        showNotification("Time to Hydrate 💧", "You haven't logged water in an hour.");
+                    }
+                }
         }
-    }, 60000);
+    }
+
+    // Sleep Reminder
+    if (store.user.settings.notificationsEnabled && store.user.settings.sleepTime) {
+            const sleepTime = store.user.settings.sleepTime;
+            const [h, m] = sleepTime.split(':').map(Number);
+            const sleepDate = new Date();
+            sleepDate.setHours(h, m, 0, 0);
+            
+            // Remind 30 mins before
+            const remindDate = new Date(sleepDate.getTime() - 30 * 60000);
+            const remindTime = `${String(remindDate.getHours()).padStart(2,'0')}:${String(remindDate.getMinutes()).padStart(2,'0')}`;
+            
+            if (currentTime === remindTime) {
+                showNotification("Wind Down Time 🌙", "Your target sleep time is in 30 minutes.");
+            }
+    }
 }
 
 function showNotification(title, body) {
@@ -759,5 +894,483 @@ function showNotification(title, body) {
     }
 }
 
-// Start
+// --- Utilities Logic ---
+
+let timerInterval = null;
+let timerState = {
+    timeLeft: 1500, // 25 mins
+    totalTime: 1500,
+    isActive: false,
+    taskId: null // Linked task
+};
+
+const BREATH_PHASES = [
+    { text: 'Inhale', duration: 4000, scale: 1.5, opacity: 1 },
+    { text: 'Hold', duration: 4000, scale: 1.5, opacity: 0.8 },
+    { text: 'Exhale', duration: 4000, scale: 1, opacity: 0.5 },
+    { text: 'Hold', duration: 4000, scale: 1, opacity: 0.8 }
+];
+let breathState = {
+    active: false,
+    phaseIndex: 0,
+    timeout: null
+};
+
+window.openFocusMode = function(taskId) {
+    // 1. Switch to Utilities tab
+    document.querySelector('[data-tab="utilities"]').click();
+    document.getElementById('util-tab-focus').click();
+
+    // 2. Setup Task
+    const task = store.tasks.find(t => t.id === taskId);
+    if (task) {
+        timerState.taskId = taskId;
+        document.getElementById('timer-task-label').innerHTML = `Focusing on: <span class="text-primary font-bold">${task.title}</span>`;
+    } else {
+        timerState.taskId = null;
+        document.getElementById('timer-task-label').textContent = "Ready to Focus?";
+    }
+}
+
+function setupUtilities() {
+    // Sub-tabs
+    const focusBtn = document.getElementById('util-tab-focus');
+    const breathBtn = document.getElementById('util-tab-breath');
+    const focusView = document.getElementById('util-focus');
+    const breathView = document.getElementById('util-breath');
+
+    focusBtn.addEventListener('click', () => {
+        focusBtn.classList.remove('text-muted-foreground', 'bg-transparent');
+        focusBtn.classList.add('bg-background', 'text-foreground', 'shadow-sm');
+        
+        breathBtn.classList.add('text-muted-foreground', 'bg-transparent');
+        breathBtn.classList.remove('bg-background', 'text-foreground', 'shadow-sm');
+        
+        focusView.classList.remove('hidden');
+        breathView.classList.add('hidden');
+    });
+
+    breathBtn.addEventListener('click', () => {
+        breathBtn.classList.remove('text-muted-foreground', 'bg-transparent');
+        breathBtn.classList.add('bg-background', 'text-foreground', 'shadow-sm');
+        
+        focusBtn.classList.add('text-muted-foreground', 'bg-transparent');
+        focusBtn.classList.remove('bg-background', 'text-foreground', 'shadow-sm');
+
+        breathView.classList.remove('hidden');
+        focusView.classList.add('hidden');
+    });
+
+    // Timer Controls
+    document.getElementById('timer-toggle-btn').addEventListener('click', toggleTimer);
+    document.getElementById('timer-reset-btn').addEventListener('click', resetTimer);
+    document.getElementById('timer-finish-btn').addEventListener('click', finishTimer);
+
+    document.querySelectorAll('.timer-preset').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mins = parseInt(btn.dataset.time);
+            setTimerDuration(mins * 60);
+            
+            // UI Update
+            document.querySelectorAll('.timer-preset').forEach(b => b.removeAttribute('data-active'));
+            btn.setAttribute('data-active', 'true');
+        });
+    });
+
+    // Breath Controls
+    document.getElementById('breath-toggle-btn').addEventListener('click', toggleBreathing);
+
+    // Water Controls
+    setupWater();
+}
+
+// -- Timer Functions --
+
+function setTimerDuration(seconds) {
+    if (timerState.isActive) return; // Block while running
+    timerState.timeLeft = seconds;
+    timerState.totalTime = seconds;
+    updateTimerUI();
+}
+
+function updateTimerBtnIcon(name) {
+    const btn = document.getElementById('timer-toggle-btn');
+    btn.innerHTML = `<i data-lucide="${name}" class="h-10 w-10 fill-current pl-1"></i>`;
+    if (window.lucide) window.lucide.createIcons();
+}
+
+function toggleTimer() {
+    timerState.isActive = !timerState.isActive;
+    if (timerState.isActive) {
+        updateTimerBtnIcon('pause');
+        document.getElementById('timer-finish-btn').classList.remove('opacity-50', 'pointer-events-none');
+        timerInterval = setInterval(() => {
+            if (timerState.timeLeft > 0) {
+                timerState.timeLeft--;
+                updateTimerUI();
+            } else {
+                finishTimer();
+            }
+        }, 1000);
+    } else {
+        updateTimerBtnIcon('play');
+        clearInterval(timerInterval);
+    }
+}
+
+function resetTimer() {
+    clearInterval(timerInterval);
+    timerState.isActive = false;
+    timerState.timeLeft = timerState.totalTime;
+    
+    updateTimerBtnIcon('play');
+    document.getElementById('timer-finish-btn').classList.add('opacity-50', 'pointer-events-none');
+    
+    updateTimerUI();
+}
+
+function finishTimer() {
+    clearInterval(timerInterval);
+    timerState.isActive = false;
+    timerState.timeLeft = 0;
+    updateTimerUI();
+    
+    // Reset UI state
+    // Reset UI state
+    updateTimerBtnIcon('play');
+    document.getElementById('timer-finish-btn').classList.add('opacity-50', 'pointer-events-none');
+
+    // Reward
+    updatePoints(50);
+    showNotification("Focus Session Complete", "Great job! +50 points.");
+
+    // Prompt for task completion
+    if (timerState.taskId) {
+        if(confirm(`Mark linked task as complete?`)) {
+            toggleTask(null, timerState.taskId);
+        }
+    }
+    
+    // Sound (Beep)
+    const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+    audio.play().catch(e => console.log('Audio play failed', e));
+    
+    // Reset to default after a moment
+    setTimeout(() => {
+        timerState.timeLeft = timerState.totalTime;
+        updateTimerUI();
+    }, 2000);
+}
+
+function updateTimerUI() {
+    const mins = Math.floor(timerState.timeLeft / 60);
+    const secs = timerState.timeLeft % 60;
+    document.getElementById('timer-display').textContent = 
+        `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+        
+    // Ring Progress
+    const ring = document.getElementById('timer-ring');
+    const circumference = 289;
+    const offset = circumference - (timerState.timeLeft / timerState.totalTime) * circumference;
+    ring.style.strokeDashoffset = offset;
+    
+    // Color shift based on progress
+    if (timerState.timeLeft < 60) {
+        ring.classList.add('text-destructive');
+        ring.classList.remove('text-primary');
+    } else {
+        ring.classList.remove('text-destructive');
+        ring.classList.add('text-primary');
+    }
+}
+
+// -- Breath Functions --
+
+function toggleBreathing() {
+    const btn = document.getElementById('breath-toggle-btn');
+    const guide = document.getElementById('breath-guide');
+    
+    if (breathState.active) {
+        // Stop
+        breathState.active = false;
+        clearTimeout(breathState.timeout);
+        btn.textContent = "Start Breathing";
+        btn.classList.remove('bg-muted', 'text-foreground');
+        btn.classList.add('bg-primary', 'text-primary-foreground');
+        
+        // Reset UI
+        updateBreathUI('Ready', 1, 1);
+        guide.textContent = "Take a deep breath...";
+    } else {
+        // Start
+        breathState.active = true;
+        btn.textContent = "Stop";
+        btn.classList.remove('bg-primary', 'text-primary-foreground');
+        btn.classList.add('bg-muted', 'text-foreground');
+        guide.textContent = "Follow the rhythm...";
+        runBreathCycle();
+    }
+}
+
+function runBreathCycle() {
+    if (!breathState.active) return;
+    
+    const phase = BREATH_PHASES[breathState.phaseIndex];
+    updateBreathUI(phase.text, phase.scale, phase.opacity);
+    
+    breathState.timeout = setTimeout(() => {
+        breathState.phaseIndex = (breathState.phaseIndex + 1) % BREATH_PHASES.length;
+        runBreathCycle();
+    }, phase.duration);
+}
+
+function updateBreathUI(text, scale, opacity) {
+    const circle = document.getElementById('breath-circle');
+    const label = document.getElementById('breath-text');
+    const bv = document.getElementById('breath-circle-bv');
+    
+    label.style.opacity = '0';
+    setTimeout(() => {
+        label.textContent = text;
+        label.style.opacity = '1';
+    }, 200);
+    
+    circle.style.transform = `scale(${scale})`;
+    circle.style.borderColor = `rgba(var(--primary), ${opacity})`;
+    bv.style.transform = `scale(${scale * 1.2})`;
+}
+
+// -- Water Functions --
+
+function setupWater() {
+    const waterBtn = document.getElementById('util-tab-water');
+    const waterView = document.getElementById('util-water');
+    const focusView = document.getElementById('util-focus');
+    const breathView = document.getElementById('util-breath');
+    const focusBtn = document.getElementById('util-tab-focus');
+    const breathBtn = document.getElementById('util-tab-breath');
+
+    // Tab Switching
+    waterBtn.addEventListener('click', () => {
+        // Reset others
+        [focusBtn, breathBtn].forEach(b => {
+             b.classList.add('text-muted-foreground', 'bg-transparent');
+             b.classList.remove('bg-background', 'text-foreground', 'shadow-sm');
+        });
+        
+        waterBtn.classList.remove('text-muted-foreground', 'bg-transparent');
+        waterBtn.classList.add('bg-background', 'text-foreground', 'shadow-sm');
+        
+        focusView.classList.add('hidden');
+        breathView.classList.add('hidden');
+        waterView.classList.remove('hidden');
+        
+        updateWaterUI();
+    });
+
+    // Add/Remove (Utility Tab)
+    document.getElementById('water-add-btn').addEventListener('click', () => {
+        // Utility tab always operates on "Today" conceptually, 
+        // but let's route it through the same modifyWater logic.
+        // Ensure selected date is today before calling? 
+        // Or just let modifyWater enforce it (which requires selectedDate=Today).
+        // Let's force switch to today if they use the utility tab, or just act on today regardless of view?
+        // Safest: Act on TODAY regardless of selectedDate in timeline.
+        
+        const today = new Date().toISOString().split('T')[0];
+        if (!store.hydrationLogs[today]) store.hydrationLogs[today] = 0;
+        store.hydrationLogs[today]++;
+        store.user.water.lastDrink = Date.now();
+        
+        if (store.hydrationLogs[today] === store.user.water.goal) {
+            updatePoints(20);
+            showNotification("Hydration Goal Met!", "Great job staying hydrated! +20 points");
+        }
+        saveStore();
+    });
+
+    document.getElementById('water-remove-btn').addEventListener('click', () => {
+        const today = new Date().toISOString().split('T')[0];
+        if (store.hydrationLogs[today] && store.hydrationLogs[today] > 0) {
+            store.hydrationLogs[today]--;
+            saveStore();
+        }
+    });
+
+    // Notify Toggle
+    const toggle = document.getElementById('water-notify-toggle');
+    const slider = document.getElementById('water-notify-slider');
+    
+    // Init state
+    if (store.user.water.reminders) {
+        toggle.classList.add('active');
+        slider.classList.add('translate-x-5');
+    }
+
+    toggle.addEventListener('click', () => {
+        store.user.water.reminders = !store.user.water.reminders;
+        const isActive = store.user.water.reminders;
+        
+        toggle.classList.toggle('active', isActive);
+        if (isActive) {
+            slider.classList.add('translate-x-5');
+            slider.classList.remove('translate-x-0');
+             Notification.requestPermission();
+        } else {
+            slider.classList.remove('translate-x-5');
+            slider.classList.add('translate-x-0');
+        }
+        saveStore();
+    });
+    
+    // Check daily reset
+    checkDailyWaterReset();
+}
+
+function updateWaterUI() {
+    // Utility Tab UI
+    const today = new Date().toISOString().split('T')[0];
+    const current = store.hydrationLogs[today] || 0;
+    const goal = store.user.water.goal;
+    
+    const countEl = document.getElementById('water-count');
+    const goalEl = document.getElementById('water-goal');
+    const levelEl = document.getElementById('water-level');
+
+    if(countEl) countEl.textContent = current;
+    if(goalEl) goalEl.textContent = goal;
+    
+    if(levelEl) {
+        const percentage = Math.min((current / goal) * 100, 100);
+        levelEl.style.height = `${percentage}%`;
+    }
+}
+
+window.modifyWater = function(amount) {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Allow modifying current selected date if it is today, OR just force today?
+    // User requested "per day basis". If they are on a past date in timeline, the widget shows history.
+    // The buttons only appear if selectedDate == today.
+    // So this function acts on store.user.selectedDate which MUST be today if buttons are clicked.
+    // Safety check:
+    if (store.user.selectedDate !== today) return;
+
+    if (!store.hydrationLogs[today]) store.hydrationLogs[today] = 0;
+    
+    if (amount < 0 && store.hydrationLogs[today] <= 0) return;
+    
+    store.hydrationLogs[today] += amount;
+    store.user.water.lastDrink = Date.now();
+    
+    // Reward
+    if (amount > 0 && store.hydrationLogs[today] === store.user.water.goal) {
+        updatePoints(20);
+        showNotification("Hydration Goal Met!", "Great job staying hydrated! +20 points");
+    }
+    
+    saveStore();
+}
+
+function checkDailyWaterReset() {
+    // No longer strictly needed for "resetting" a counter, 
+    // but we can ensure the key exists for consistency?
+    // Actually, with the new log system, we just read hydrationLogs[today].
+    // If it's undefined, it's effectively 0.
+    // So this function can just be a no-op or used for other maintenance.
+}
+
+// -- Phase 3 Logic: Balance --
+
+function getTaskIcon(title) {
+    const t = title.toLowerCase();
+    if (t.includes('lunch') || t.includes('dinner') || t.includes('breakfast') || t.includes('food') || t.includes('meal')) return 'utensils';
+    if (t.includes('coffee') || t.includes('tea')) return 'coffee';
+    if (t.includes('sleep') || t.includes('nap') || t.includes('bed')) return 'moon';
+    if (t.includes('wake') || t.includes('morning')) return 'sun';
+    if (t.includes('gym') || t.includes('run') || t.includes('workout') || t.includes('exercise')) return 'dumbbell';
+    if (t.includes('work') || t.includes('code') || t.includes('meeting') || t.includes('job')) return 'briefcase';
+    if (t.includes('study') || t.includes('read') || t.includes('book')) return 'book-open';
+    if (t.includes('game') || t.includes('play')) return 'gamepad-2';
+    return null; // Fallback
+}
+
+function checkWakeUpBounty() {
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const wakeTime = store.user.settings.wakeTime || '07:00';
+    
+    // Check if within 1 hour of wake time
+    const [wakeH, wakeM] = wakeTime.split(':').map(Number);
+    const targetTime = new Date();
+    targetTime.setHours(wakeH, wakeM, 0, 0);
+    
+    const diffMins = (now - targetTime) / 60000;
+    
+    // Logic: If check-in is between WakeTime and WakeTime+60m
+    // AND we haven't collected bounty today
+    if (diffMins >= 0 && diffMins <= 60) {
+        if (store.user.lastBountyDate !== today) {
+            store.user.lastBountyDate = today;
+            updatePoints(100);
+            
+            // Show special splash
+             const splash = document.createElement('div');
+            splash.className = 'fixed inset-0 z-[100] flex flex-col items-center justify-center bg-yellow-400/20 backdrop-blur-md animate-in fade-in duration-500';
+            splash.innerHTML = `
+                <div class="flex flex-col items-center gap-6 animate-in zoom-in slide-in-from-bottom-12 duration-700">
+                    <div class="h-32 w-32 bg-yellow-400 text-yellow-900 rounded-full flex items-center justify-center shadow-2xl shadow-yellow-500/40 ring-8 ring-yellow-400/20">
+                        <i data-lucide="sun" class="h-16 w-16"></i>
+                    </div>
+                    <div class="text-center space-y-2 px-4">
+                        <h1 class="text-4xl sm:text-6xl font-black tracking-tight text-yellow-500 drop-shadow-sm">MORNING GLORY!</h1>
+                        <p class="text-xl font-bold text-foreground">You woke up on time.</p>
+                        <p class="text-lg font-medium text-muted-foreground">+100 Points</p>
+                    </div>
+                    <button class="mt-8 px-8 py-3 bg-foreground text-background rounded-full font-bold shadow-lg hover:scale-105 active:scale-95 transition-all" onclick="this.parentElement.parentElement.remove()">Start the Day</button>
+                </div>
+            `;
+            document.body.appendChild(splash);
+            if(window.lucide) lucide.createIcons();
+            saveStore();
+        }
+    }
+}
+
+function addMealSchedule() {
+    const meals = [
+        { title: 'Breakfast', time: '08:00', duration: 30 },
+        { title: 'Lunch', time: '13:00', duration: 45 },
+        { title: 'Dinner', time: '20:00', duration: 45 }
+    ];
+    
+    let addedCount = 0;
+    meals.forEach(m => {
+        // Check if exists
+        // Simply push recurring tasks
+        const [h, min] = m.time.split(':').map(Number);
+        const endD = new Date();
+        endD.setHours(h, min + m.duration, 0, 0);
+        const endTime = `${String(endD.getHours()).padStart(2,'0')}:${String(endD.getMinutes()).padStart(2,'0')}`;
+        
+        const newTask = {
+            id: Date.now().toString() + Math.random(),
+            title: m.title,
+            startTime: m.time,
+            endTime: endTime,
+            completed: false,
+            recurrence: 'daily',
+            days: [0,1,2,3,4,5,6],
+            date: null,
+            deletedDates: []
+        };
+        store.tasks.push(newTask);
+        addedCount++;
+    });
+    
+    saveStore();
+    alert(`Added ${addedCount} recurring meal tasks!`);
+}
+
+// Start the app
 init();
