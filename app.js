@@ -885,6 +885,7 @@ window.openRewardsProfile = function() {
     renderForestGrid();
     
     modal.showModal();
+    document.body.style.overflow = 'hidden';
 }
 
 function renderForestGrid() {
@@ -1281,6 +1282,14 @@ function setupListeners() {
             });
         }
     });
+
+    // Rewards Modal Scroll Cleanup
+    const rewardsModal = document.getElementById('rewards-modal');
+    if (rewardsModal) {
+        rewardsModal.addEventListener('close', () => {
+            document.body.style.overflow = '';
+        });
+    }
 }
 
 function applyTheme() {
