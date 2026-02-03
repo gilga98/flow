@@ -30,6 +30,23 @@ let isSelectionMode = false;
 let selectedTaskIds = new Set();
 let pendingDeleteId = null; // Single task deletion tracking
 
+function setSelectionMode(active) {
+    isSelectionMode = active;
+    const selectBtn = document.getElementById('select-mode-btn');
+    
+    if (!active) {
+        selectedTaskIds.clear();
+        selectBtn.textContent = 'Select';
+        selectBtn.classList.remove('bg-primary', 'text-primary-foreground');
+    } else {
+        selectBtn.textContent = 'Cancel';
+        selectBtn.classList.add('bg-primary', 'text-primary-foreground');
+    }
+    
+    updateBulkActions();
+    renderUI();
+}
+
 // --- Core Functions ---
 
 function loadStore() {
@@ -502,12 +519,7 @@ function bulkDelete() {
     
     if (confirm(`Delete ${selectedTaskIds.size} tasks?`)) {
         store.tasks = store.tasks.filter(t => !selectedTaskIds.has(t.id));
-        selectedTaskIds.clear();
-        isSelectionMode = false;
-        const selectBtn = document.getElementById('select-mode-btn');
-        selectBtn.textContent = 'Select';
-        selectBtn.classList.remove('bg-primary', 'text-primary-foreground');
-        updateBulkActions();
+        setSelectionMode(false);
         saveStore();
     }
 }
@@ -666,24 +678,11 @@ function setupListeners() {
     // Bulk & Selection Mode
     const selectBtn = document.getElementById('select-mode-btn');
     selectBtn.addEventListener('click', () => {
-        isSelectionMode = !isSelectionMode;
-        if (!isSelectionMode) {
-            selectedTaskIds.clear();
-        }
-        selectBtn.textContent = isSelectionMode ? 'Cancel' : 'Select';
-        selectBtn.classList.toggle('bg-primary', isSelectionMode);
-        selectBtn.classList.toggle('text-primary-foreground', isSelectionMode);
-        updateBulkActions();
-        renderUI();
+        setSelectionMode(!isSelectionMode);
     });
 
     document.getElementById('bulk-cancel-btn').addEventListener('click', () => {
-        isSelectionMode = false;
-        selectedTaskIds.clear();
-        selectBtn.textContent = 'Select';
-        selectBtn.classList.remove('bg-primary', 'text-primary-foreground');
-        updateBulkActions();
-        renderUI();
+        setSelectionMode(false);
     });
 
     document.getElementById('bulk-delete-btn').addEventListener('click', bulkDelete);
