@@ -498,28 +498,88 @@ function renderUI() {
         // Render Clusters
         clusters.forEach((cluster, clusterIndex) => {
             const isMulti = cluster.length > 1;
-            
-            const container = document.createElement('div');
-            // Improved Horizontal Scroll UX
-            container.className = isMulti ? "flex gap-3 w-full overflow-x-auto pb-4 px-1 snap-x snap-mandatory no-scrollbar" : "w-full";
-            
-            cluster.forEach((task, index) => {
-                const isCompleted = task.completed;
-                const now = new Date();
-                const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-                const isToday = formattedSelectedDate === todayStr;
-                const isActive = isToday && currentTime >= task.startTime && currentTime <= task.endTime;
-                const isSelected = selectedTaskIds.has(task.id);
+            const now = new Date();
+            const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            const isToday = formattedSelectedDate === todayStr;
 
+            // Shared Group Status
+            const groupIsActive = isToday && cluster.some(t => currentTime >= t.startTime && currentTime <= t.endTime);
+            const groupIsCompleted = cluster.every(t => t.completed);
+
+            // Container matches "timeline-item" structure
+            // If multi: Use a scrollable container for cards
+            // If single: Standard rendering
+            
+            const wrapper = document.createElement('div');
+            // 'overflow-hidden' on wrapper prevents any vertical scroll leak from children if configured badly, 
+            // but we need 'visible' for dots if they pop out? Actually dots are inside.
+            wrapper.className = `timeline-item relative pl-8 pb-8 transition-all duration-500 animate-in fade-in slide-in-from-bottom-4 ${groupIsCompleted ? 'completed' : ''} ${groupIsActive ? 'active' : ''}`;
+            wrapper.style.animationDelay = `${clusterIndex * 50}ms`;
+
+            // Shared Timeline Dot
+            // Helper to see if we should show primary dot (if group active or any task inside has special icon/state?)
+            // For now, if active, show active dot.
+            const dot = document.createElement('div');
+            dot.className = `timeline-dot ${groupIsActive ? 'bg-primary border-primary' : ''}`;
+            wrapper.appendChild(dot);
+
+            if (isMulti) {
+                // Horizontal Scroll Container
+                const scrollContainer = document.createElement('div');
+                // Added overflow-y-hidden vs jitter
+                scrollContainer.className = "flex gap-3 w-full overflow-x-auto pb-2 px-1 snap-x snap-mandatory no-scrollbar";
+                // Prevent vertical scroll pass-through
+                scrollContainer.style.overflowY = "hidden";
+                scrollContainer.style.touchAction = "pan-x"; 
+
+                cluster.forEach((task) => {
+                    const isCompleted = task.completed;
+                    const isActive = isToday && currentTime >= task.startTime && currentTime <= task.endTime;
+                    const isSelected = selectedTaskIds.has(task.id);
+                    const iconName = getTaskIcon(task.title);
+
+                    const cardWrapper = document.createElement('div');
+                    cardWrapper.className = `flex-none w-[90%] sm:w-[48%] snap-start relative`;
+
+                    cardWrapper.innerHTML = `
+                        <div class="selection-circle ${isSelected ? 'selected' : ''}" style="${isSelected || isSelectionMode ? 'display: flex;' : ''} top: 50%; transform: translateY(-50%); left: -10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                            <i data-lucide="check" class="h-3 w-3"></i>
+                        </div>
+                        <div class="timeline-card group relative bg-card border rounded-2xl p-4 shadow-sm transition-all duration-300 hover:shadow-md hover:border-primary/20 ${isActive ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}" 
+                            onclick="handleItemClick(event, '${task.id}')">
+                            <div class="flex items-center justify-between gap-4">
+                                <div class="flex flex-col gap-1 overflow-hidden pointer-events-none">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[10px] font-bold tracking-wider text-muted-foreground uppercase py-0.5 px-2 bg-secondary rounded-full flex items-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
+                                            ${iconName ? `<i data-lucide="${iconName}" class="h-3 w-3"></i>` : ''}
+                                            ${task.startTime} - ${task.endTime}
+                                        </span>
+                                        ${isActive ? '<span class="flex h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0"></span>' : ''}
+                                    </div>
+                                    <span class="text-base font-semibold leading-tight truncate ${isCompleted ? 'line-through text-muted-foreground decoration-2' : 'text-foreground'}">${task.title}</span>
+                                </div>
+                                <div class="flex items-center gap-2 shrink-0">
+                                    <button onclick="toggleTask(event, '${task.id}')" class="h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${isSelectionMode ? 'hidden' : ''} ${isCompleted ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20 scale-110' : 'bg-background hover:bg-accent border-input hover:border-primary hover:scale-105'}">
+                                        ${isCompleted ? '<i data-lucide="check" class="h-5 w-5"></i>' : '<i data-lucide="circle" class="h-5 w-5 text-muted-foreground/50"></i>'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div> 
+                    `;
+                    scrollContainer.appendChild(cardWrapper);
+                });
+                wrapper.appendChild(scrollContainer);
+            } else {
+                // Single Item (Original Logic slightly cleaned up)
+                const task = cluster[0];
+                const isCompleted = task.completed;
+                const isActive = groupIsActive; // Same for single
+                const isSelected = selectedTaskIds.has(task.id);
                 const iconName = getTaskIcon(task.title);
 
-                const el = document.createElement('div');
-                // Adjust classes: better width and snap-start
-                el.className = `timeline-item relative pl-8 pb-8 transition-all duration-500 animate-in fade-in slide-in-from-bottom-4 ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''} ${isMulti ? 'flex-none w-[90%] sm:w-[48%] snap-start' : ''}`;
-                el.style.animationDelay = `${(clusterIndex + index) * 50}ms`;
-
-                el.innerHTML = `
-                    <div class="timeline-dot ${iconName ? 'bg-primary border-primary' : ''}"></div>
+                // Helper for selection circle logic in standard view
+                // We use standard .selection-circle classes from CSS
+                wrapper.innerHTML += `
                     <div class="selection-circle ${isSelected ? 'selected' : ''}">
                         <i data-lucide="check" class="h-3 w-3"></i>
                     </div>
@@ -551,9 +611,9 @@ function renderUI() {
                         </div>
                     </div> 
                 `;
-                container.appendChild(el);
-            });
-            timelineList.appendChild(container);
+            }
+
+            timelineList.appendChild(wrapper);
         });
     }
 
