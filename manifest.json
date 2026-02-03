@@ -1,7 +1,7 @@
 {
-  "name": "Daily Flow",
-  "short_name": "Flow",
-  "description": "A mindful daily timetable app.",
+  "name": "SproutList",
+  "short_name": "SproutList",
+  "description": "A mindful daily timetable app to help you grow.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",

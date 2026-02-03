@@ -5,7 +5,7 @@
   --card-foreground: 240 10% 3.9%;
   --popover: 0 0% 100%;
   --popover-foreground: 240 10% 3.9%;
-  --primary: 240 5.9% 10%;
+  --primary: 142 76% 36%;
   --primary-foreground: 0 0% 98%;
   --secondary: 240 4.8% 95.9%;
   --secondary-foreground: 240 5.9% 10%;
@@ -17,7 +17,7 @@
   --destructive-foreground: 0 0% 98%;
   --border: 240 5.9% 90%;
   --input: 240 5.9% 90%;
-  --ring: 240 5.9% 10%;
+  --ring: 142 76% 36%;
   --radius: 0.75rem;
 }
 
@@ -28,8 +28,8 @@
   --card-foreground: 0 0% 98%;
   --popover: 240 10% 3.9%;
   --popover-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 240 5.9% 10%;
+  --primary: 142 71% 45%;
+  --primary-foreground: 0 0% 100%;
   --secondary: 240 3.7% 15.9%;
   --secondary-foreground: 0 0% 98%;
   --muted: 240 3.7% 15.9%;
@@ -40,7 +40,7 @@
   --destructive-foreground: 0 0% 98%;
   --border: 240 3.7% 15.9%;
   --input: 240 3.7% 15.9%;
-  --ring: 240 4.9% 83.9%;
+  --ring: 142 71% 45%;
 }
 
 * {
@@ -350,4 +350,53 @@ dialog::backdrop {
 @keyframes fade-out-top {
     from { opacity: 1; transform: translateY(0); }
     to { opacity: 0; transform: translateY(-1rem); }
+}
+
+/* Custom Scrollbar for Modal */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Slide in from top 4 */
+.slide-in-from-top-4 { animation-name: slide-in-from-top-4; }
+
+@keyframes slide-in-from-top-4 {
+    from { transform: translateY(-1rem); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* Flying Point Animation */
+.flying-point {
+    position: fixed;
+    pointer-events: none;
+    z-index: 1000;
+    font-weight: 800;
+    color: #22c55e;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    animation: fly-to-header 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes fly-to-header {
+    0% {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+    }
+    50% {
+        opacity: 1;
+        transform: translate(var(--tx), var(--ty)) scale(1.5);
+    }
+    100% {
+        transform: translate(var(--tx), var(--ty)) scale(0.5);
+        opacity: 0;
+    }
 }

@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Daily Flow</title>
-    <meta name="description" content="A simple, distraction-free timetable app.">
+    <title>SproutList</title>
+    <meta name="description" content="A mindful daily timetable app to help you grow.">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="logo-square.svg">
     <link rel="apple-touch-icon" href="logo-square.svg">
@@ -80,16 +80,17 @@
         <header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div class="container flex h-14 max-w-screen-2xl items-center justify-between px-4 mx-auto">
                 <div class="flex items-center gap-2 font-bold text-xl tracking-tight">
-                    <img src="logo-horizontal.svg" alt="Daily Flow" class="h-8 w-auto">
+                    <img src="logo-horizontal.svg" alt="SproutList" class="h-8 w-auto">
                 </div>
                 <div class="flex items-center gap-3">
                     <div id="reward-container" class="flex flex-col items-end gap-1 cursor-pointer hover:opacity-80 transition-opacity" onclick="openRewardsProfile()">
                         <div class="flex items-center gap-2">
-                             <div id="level-badge" class="px-2 py-0.5 bg-primary text-[10px] font-bold text-primary-foreground rounded uppercase tracking-tighter shadow-sm">
+                             <div id="level-badge" class="px-2 py-0.5 bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary rounded-full uppercase tracking-tighter shadow-sm flex items-center gap-1">
+                                <span id="level-icon-wrapper"><i data-lucide="sprout" class="h-3 w-3"></i></span>
                                 Lvl <span id="level-value">1</span>
                             </div>
-                            <div id="points-display" class="flex items-center gap-1.5 px-3 py-1 bg-secondary rounded-full border border-border shadow-sm transition-all duration-300">
-                                <i data-lucide="trophy" class="h-3.5 w-3.5 text-yellow-500 fill-yellow-500"></i>
+                            <div id="points-display" class="relative flex items-center gap-1.5 px-3 py-1 bg-secondary rounded-full border border-border shadow-sm transition-all duration-300 overflow-hidden">
+                                <i id="points-icon" data-lucide="seed" class="h-3.5 w-3.5 text-primary fill-primary/20"></i>
                                 <span id="points-value" class="text-sm font-semibold tabular-nums">0</span>
                             </div>
                         </div>
@@ -191,8 +192,8 @@
                 </div>
                 
                 <div id="empty-state" class="hidden flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-500">
-                    <div class="h-20 w-20 rounded-full bg-muted flex items-center justify-center mb-4">
-                        <i data-lucide="coffee" class="h-10 w-10 text-muted-foreground/50"></i>
+                    <div class="h-20 w-20 flex items-center justify-center mb-4 opacity-50 grayscale">
+                        <img src="logo-square.svg" alt="No tasks" class="h-16 w-16">
                     </div>
                     <h3 class="font-semibold text-lg">No tasks scheduled</h3>
                     <p class="text-sm text-muted-foreground max-w-[200px] mt-1">Add your daily rituals and tasks to start flowing.</p>
@@ -212,8 +213,8 @@
                 </div>
 
                 <div id="notes-empty-state" class="hidden flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-500">
-                    <div class="h-20 w-20 rounded-full bg-muted flex items-center justify-center mb-4 transition-transform hover:scale-110 duration-300">
-                        <i data-lucide="sparkles" class="h-10 w-10 text-muted-foreground/40"></i>
+                    <div class="h-20 w-20 flex items-center justify-center mb-4 transition-transform hover:scale-110 duration-300 opacity-50 grayscale">
+                        <img src="logo-square.svg" alt="No notes" class="h-16 w-16">
                     </div>
                     <h3 class="font-bold text-lg tracking-tight">Your brain, offloaded</h3>
                     <p class="text-sm text-muted-foreground max-w-[240px] mt-2 leading-relaxed">Capture fleeting thoughts, ideas, or to-dos. Let Flow remember for you.</p>
@@ -399,9 +400,12 @@
                             <span class="text-sm font-semibold">Notifications</span>
                             <p class="text-xs text-muted-foreground">Alerts for task starts</p>
                         </div>
-                        <button id="notify-toggle" class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background bg-input">
-                            <span class="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform translate-x-0" id="notify-toggle-slider"></span>
-                        </button>
+                        <div class="flex items-center gap-3">
+                            <button onclick="testNotification()" class="text-xs font-bold text-primary hover:underline bg-primary/10 px-3 py-1.5 rounded-lg transition-colors">Test</button>
+                            <button id="notify-toggle" class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background bg-input">
+                                <span class="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform translate-x-0" id="notify-toggle-slider"></span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -525,7 +529,8 @@
         </div>
 
         <!-- Install Prompt -->
-        <div id="install-banner" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[50] bg-card text-card-foreground px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-6 translate-y-32 transition-transform duration-300 border border-border w-[90%] max-w-sm">
+        <div id="install-banner" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[50] bg-card text-card-foreground px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 translate-y-32 transition-transform duration-300 border border-border w-[90%] max-w-sm">
+            <img src="logo-square.svg" alt="App Icon" class="h-10 w-10 rounded-xl shadow-sm">
             <div class="flex-1">
                 <h3 class="font-bold text-sm">Install App</h3>
                 <p class="text-xs text-muted-foreground">Add to home screen for the best experience.</p>
@@ -572,40 +577,87 @@
         <!-- Rewards Modal -->
         <dialog id="rewards-modal" class="p-0 bg-transparent backdrop:bg-background/80 backdrop:backdrop-blur-sm animate-in fade-in duration-200">
              <div class="fixed inset-0 z-[80] flex items-center justify-center p-4">
-                <div class="bg-card text-foreground w-full max-w-sm rounded-2xl border border-border shadow-2xl p-6 overflow-hidden animate-in zoom-in duration-300 relative">
-                    <button onclick="document.getElementById('rewards-modal').close()" class="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
-                        <i data-lucide="x" class="h-5 w-5"></i>
-                    </button>
+                <div class="bg-card text-foreground w-full max-w-sm rounded-[2rem] border border-border shadow-2xl p-0 overflow-hidden animate-in zoom-in duration-300 relative flex flex-col max-h-[85vh]">
                     
-                    <div class="text-center mb-6">
-                        <div class="inline-flex items-center justify-center h-16 w-16 rounded-full bg-green-100 text-green-600 mb-3 shadow-sm ring-4 ring-green-50">
-                            <i data-lucide="tree-deciduous" class="h-8 w-8"></i>
+                    <!-- Header -->
+                    <div class="relative bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/30 dark:to-background p-6 text-center border-b border-border/50">
+                        <button onclick="document.getElementById('rewards-modal').close()" class="absolute top-4 right-4 text-muted-foreground/50 hover:text-foreground transition-colors p-2 rounded-full hover:bg-background/50">
+                            <i data-lucide="x" class="h-5 w-5"></i>
+                        </button>
+                        
+                        <div class="inline-flex items-center justify-center h-20 w-20 rounded-full bg-background shadow-lg mb-4 ring-4 ring-background/50 relative">
+                             <div class="absolute inset-0 rounded-full bg-gradient-to-tr from-green-500/20 to-transparent"></div>
+                            <i data-lucide="tree-deciduous" class="h-10 w-10 text-primary relative z-10"></i>
                         </div>
-                        <h2 class="text-2xl font-black tracking-tight">Your Impact</h2>
-                        <p class="text-sm text-muted-foreground">Every 1000 points plants a sapling.</p>
+                        <h2 class="text-2xl font-black tracking-tight mb-1">Your Forest</h2>
+                        <p class="text-sm text-muted-foreground font-medium flex items-center justify-center gap-1.5">
+                            <i data-lucide="sprout" class="h-3.5 w-3.5"></i>
+                            <span id="sapling-count-display">0 Saplings</span>
+                        </p>
                     </div>
 
-                    <div class="space-y-6">
+                    <!-- Content -->
+                    <div class="p-6 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
                         <!-- Progress -->
                         <div class="space-y-2">
                              <div class="flex justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                                <span>Progress</span>
+                                <span>Next Milestone</span>
                                 <span id="sapling-next-text">...</span>
                             </div>
-                            <div class="h-3 w-full bg-secondary rounded-full overflow-hidden">
-                                <div id="sapling-progress-fill" class="h-full bg-gradient-to-r from-green-400 to-green-600 w-0 transition-all duration-1000"></div>
+                            <div class="h-4 w-full bg-secondary rounded-full overflow-hidden shadow-inner border border-border/50">
+                                <div id="sapling-progress-fill" class="h-full bg-gradient-to-r from-green-400 to-green-600 w-0 transition-all duration-1000 relative">
+                                    <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImEiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTTAgNDBMODAgMEg0MEwwIDQweiIgZmlsbD0id2hpdGUiIGZpbGwtb3BhY2l0eT0iMC4xIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2EpIi8+PC9zdmc+')] opacity-30"></div>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- List -->
-                        <div class="max-h-[200px] overflow-y-auto space-y-2 pr-1" id="sapling-list">
-                            <!-- Saplings Injected Here -->
+                        <!-- Grid -->
+                        <div id="forest-grid" class="grid grid-cols-5 gap-2 min-h-[100px] p-4 bg-muted/30 rounded-2xl border border-dashed border-border/60 justify-items-center">
+                            <!-- Sapling Icons Injected Here -->
+                            <div class="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground/30 animate-pulse">
+                                <i data-lucide="sprout" class="h-5 w-5"></i>
+                            </div>
                         </div>
                         
-                        <div class="bg-muted/50 p-3 rounded-lg text-xs text-muted-foreground leading-relaxed">
-                            <i data-lucide="info" class="inline-block h-3 w-3 mr-1 align-middle"></i>
-                            Copy the code for any earned sapling and verify it with us to confirm planting.
+                        <!-- Actions -->
+                        <div class="grid grid-cols-2 gap-3">
+                             <button onclick="toggleRewardInfo()" class="flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-border bg-card hover:bg-accent transition-all group">
+                                <div class="h-8 w-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <i data-lucide="info" class="h-5 w-5"></i>
+                                </div>
+                                <span class="text-xs font-bold text-muted-foreground">How it Works</span>
+                            </button>
+                             <button onclick="viewSaplingHistory()" class="flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-border bg-card hover:bg-accent transition-all group">
+                                <div class="h-8 w-8 rounded-full bg-green-50 text-green-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <i data-lucide="history" class="h-5 w-5"></i>
+                                </div>
+                                <span class="text-xs font-bold text-muted-foreground">History</span>
+                            </button>
                         </div>
+
+                        <!-- Info Reveal (Hidden by default) -->
+                         <div id="reward-info-card" class="hidden animate-in fade-in slide-in-from-top-4">
+                            <div class="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900 text-sm space-y-3">
+                                <h4 class="font-bold text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                                    <i data-lucide="sparkles" class="h-4 w-4"></i> Growth Rules
+                                </h4>
+                                <ul class="space-y-2 text-muted-foreground text-xs leading-relaxed">
+                                    <li class="flex items-start gap-2">
+                                        <div class="mt-0.5 h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0"></div>
+                                        <span>Earn <strong class="text-foreground">10 points</strong> for every task completed (min 1 min duration).</span>
+                                    </li>
+                                    <li class="flex items-start gap-2">
+                                        <div class="mt-0.5 h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0"></div>
+                                        <span>Reach <strong class="text-foreground">1000 points</strong> to plant a Sapling.</span>
+                                    </li>
+                                    <li class="flex items-start gap-2">
+                                        <div class="mt-0.5 h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0"></div>
+                                        <span>Verify your Saplings to support real-world planting initiatives.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
              </div>

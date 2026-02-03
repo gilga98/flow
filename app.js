@@ -185,70 +185,114 @@ async function generateVerificationCode(id, dateStr) {
     }
 }
 
-async function updatePoints(amount, source = 'generic') {
-    // anti-gaming: check daily limit for positive points
+async function updatePoints(amount, source = 'generic', visualSource = null) {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Daily Reset check
+    if (store.rewards.dailyPoints.date !== today) {
+        store.rewards.dailyPoints = { date: today, count: 0 };
+    }
+    
+    // Limits (e.g. max 200 pts per day from tasks)
+    const DAILY_LIMIT = 200;
+    if (amount > 0 && store.rewards.dailyPoints.count >= DAILY_LIMIT && source === 'task') {
+        showToast(`Daily limit reached! Come back tomorrow.`, 'info');
+        return;
+    }
+    
+    const oldLevel = Math.floor(store.user.points / 100) + 1;
+    
+    store.user.points += amount;
+    if (store.user.points < 0) store.user.points = 0;
+    
     if (amount > 0) {
-        const today = new Date().toISOString().split('T')[0];
-        if (store.rewards.dailyPoints.date !== today) {
-            store.rewards.dailyPoints = { date: today, count: 0 };
-        }
-        
-        // Cap at 300 points per day (30 tasks/events)
-        if (store.rewards.dailyPoints.count >= 300) {
-            showToast('Daily point limit reached! Come back tomorrow.', 'info');
-            return;
-        }
         store.rewards.dailyPoints.count += amount;
         store.rewards.totalPointsEarned += amount;
     }
 
-    const oldLevel = Math.floor(store.user.points / 100) + 1;
-    store.user.points += amount;
-    const newLevel = Math.floor(store.user.points / 100) + 1;
-    
-    // Check Sapling Milestone (Every 1000 points of TOTAL SCORE, or just current score? "Every 1000 points")
-    // Assuming cumulative: 1000, 2000, 3000...
-    const saplingCount = Math.floor(store.user.points / 1000);
+    // Check for Sapling (Every 1000 points)
     const currentSaplings = store.rewards.saplings.length;
+    const calculatedSaplings = Math.floor(store.user.points / 1000);
     
-    
-    if (saplingCount > currentSaplings) {
-         // Award new saplings
-         const newSaplingsNeeded = saplingCount - currentSaplings;
-         for(let i=0; i<newSaplingsNeeded; i++) {
-             const saplingId = currentSaplings + i + 1;
-             const date = new Date().toISOString().split('T')[0]; // Use YYYY-MM-DD for stability
-             
-             // Secure Code Generation
-             // We await here, so this function must be robust to re-entrancy (unlikely given JS single-thread loop for this logic)
-             const code = await generateVerificationCode(saplingId, date);
-             
-             store.rewards.saplings.push({
-                 id: saplingId,
-                 date: new Date().toISOString(), // Keep full ISO for record
-                 code: code,
-                 claimed: false
-             });
-             
-             showToast(`🌱 Sapling #${saplingId} Unlocked!`, 'success', 5000);
-         }
-    }
-    
-    // Simple streak logic: if checked in today, increment. (Simplified for MVP)
-    const today = new Date().toISOString().split('T')[0];
-    if (store.user.lastActiveDate !== today) {
-        store.user.streak++;
-        store.user.lastActiveDate = today;
+    if (calculatedSaplings > currentSaplings) {
+        const newSaplingsCount = calculatedSaplings - currentSaplings;
+        for (let i = 0; i < newSaplingsCount; i++) {
+            const id = generateId(); // Simple ID for now
+            const code = await generateVerificationCode(id, today);
+            store.rewards.saplings.push({
+                id: (currentSaplings + i + 1).toString().padStart(4, '0'),
+                date: new Date().toISOString(),
+                code: code,
+                claimed: false
+            });
+            showNotification("New Sapling Planted!", "You've grown enough to plant a tree!");
+        }
     }
     
     saveStore();
-    if (amount > 0) animatePoints(amount);
     
+    // Visuals
+    animatePoints(amount, visualSource);
+    
+    const newLevel = Math.floor(store.user.points / 100) + 1;
     if (newLevel > oldLevel) {
-        triggerLevelUp(newLevel);
+        showToast(`Level Up! You are now Level ${newLevel}`, 'success');
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     }
 }
 
+function animatePoints(amount, startSource) {
+    if (amount <= 0) return;
+    const pointsDisplay = document.getElementById('points-display');
+    if (!pointsDisplay) return;
+
+    // Create floating element
+    const el = document.createElement('div');
+    el.textContent = `+${amount}`;
+    el.className = 'flying-point';
+    
+    // Determine start position
+    let startX, startY;
+    if (startSource instanceof Element) {
+        const rect = startSource.getBoundingClientRect();
+        startX = rect.left + rect.width / 2;
+        startY = rect.top;
+    } else if (startSource && startSource.clientX) { // Event
+        startX = startSource.clientX;
+        startY = startSource.clientY;
+    } else {
+        // Default to center screen
+        startX = window.innerWidth / 2;
+        startY = window.innerHeight / 2;
+    }
+
+    // Determine target position (header points)
+    const targetRect = pointsDisplay.getBoundingClientRect();
+    const targetX = targetRect.left + targetRect.width / 2;
+    const targetY = targetRect.top + targetRect.height / 2;
+
+    // Calculate translation (delta)
+    const tx = targetX - startX;
+    const ty = targetY - startY;
+
+    el.style.left = `${startX}px`;
+    el.style.top = `${startY}px`;
+    el.style.setProperty('--tx', `${tx}px`);
+    el.style.setProperty('--ty', `${ty}px`);
+
+    document.body.appendChild(el);
+
+    // Cleanup
+    el.addEventListener('animationend', () => el.remove());
+
+    // Pulse target
+    setTimeout(() => {
+        pointsDisplay.classList.add('scale-110', 'bg-green-100', 'text-green-700');
+        setTimeout(() => {
+            pointsDisplay.classList.remove('scale-110', 'bg-green-100', 'text-green-700');
+        }, 200);
+    }, 800); // Sync with animation arrival
+}
 function triggerLevelUp(lvl) {
     // Show splash animation
     const splash = document.createElement('div');
@@ -303,7 +347,9 @@ function init() {
     renderUI();
     setupListeners();
     setupUtilities();
+    setupUtilities();
     checkNotifications();
+    checkStartupPermissions();
     
     // Initial checks
     updateGreeting();
@@ -326,7 +372,9 @@ function init() {
 
 function renderUI() {
     // 1. Points & Rewards
-    pointsValue.textContent = store.user.points;
+    const pointsValue = document.getElementById('points-value');
+    if (pointsValue) pointsValue.textContent = store.user.points;
+    
     const level = Math.floor(store.user.points / 100) + 1;
     const levelProgress = store.user.points % 100;
     
@@ -334,6 +382,20 @@ function renderUI() {
     const levelProgressBar = document.getElementById('level-progress');
     if (levelValue) levelValue.textContent = level;
     if (levelProgressBar) levelProgressBar.style.width = `${levelProgress}%`;
+    
+    // Dynamic Icon Logic
+    const levelIconWrapper = document.getElementById('level-icon-wrapper');
+    if (levelIconWrapper) {
+        let iconName = 'seed';
+        if (level >= 6) iconName = 'sprout';
+        if (level >= 11) iconName = 'tree-deciduous';
+        
+        // Only update if changed to default prevent flicker, checking inner HTML content roughly
+        if (!levelIconWrapper.innerHTML.includes(iconName)) {
+            levelIconWrapper.innerHTML = `<i data-lucide="${iconName}" class="h-3 w-3"></i>`;
+            if (window.lucide) lucide.createIcons();
+        }
+    }
 
     // 2. Timeline
     renderWeeklyScroller();
@@ -438,8 +500,8 @@ function renderUI() {
             const isMulti = cluster.length > 1;
             
             const container = document.createElement('div');
-            // If multiple, use flex row with gap and scroll
-            container.className = isMulti ? "flex gap-2 w-full overflow-x-auto pb-2 snap-x no-scrollbar" : "w-full";
+            // Improved Horizontal Scroll UX
+            container.className = isMulti ? "flex gap-3 w-full overflow-x-auto pb-4 px-1 snap-x snap-mandatory no-scrollbar" : "w-full";
             
             cluster.forEach((task, index) => {
                 const isCompleted = task.completed;
@@ -452,9 +514,8 @@ function renderUI() {
                 const iconName = getTaskIcon(task.title);
 
                 const el = document.createElement('div');
-                // Adjust classes: if multi, use flex-none with reasonable width to enable scrolling
-                // We keep relative pl-8 pb-8 for the visual timeline line on the item itself
-                el.className = `timeline-item relative pl-8 pb-8 transition-all duration-500 animate-in fade-in slide-in-from-bottom-4 ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''} ${isMulti ? 'flex-none w-[85%] sm:w-[45%] snap-center' : ''}`;
+                // Adjust classes: better width and snap-start
+                el.className = `timeline-item relative pl-8 pb-8 transition-all duration-500 animate-in fade-in slide-in-from-bottom-4 ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''} ${isMulti ? 'flex-none w-[90%] sm:w-[48%] snap-start' : ''}`;
                 el.style.animationDelay = `${(clusterIndex + index) * 50}ms`;
 
                 el.innerHTML = `
@@ -719,63 +780,15 @@ function renderWeeklyScroller() {
     }
 }
 
-function animatePoints(amount) {
-    const el = document.getElementById('points-display');
-    const val = document.getElementById('points-value');
-    
-    const isPositive = amount > 0;
-    
-    // Floating text effect
-    const float = document.createElement('div');
-    float.className = `fixed font-bold text-sm pointer-events-none transition-all duration-700 z-[100] ${isPositive ? 'text-green-500' : 'text-destructive'}`;
-    float.textContent = `${isPositive ? '+' : ''}${amount}`;
-    
-    const rect = el.getBoundingClientRect();
-    float.style.left = `${rect.left + rect.width / 2}px`;
-    float.style.top = `${rect.top}px`;
-    
-    document.body.appendChild(float);
-    
-    requestAnimationFrame(() => {
-        float.style.transform = 'translateY(-40px)';
-        float.style.opacity = '0';
-    });
-    
-    setTimeout(() => float.remove(), 700);
-
-    // Bounce animation
-    el.classList.add('scale-110', isPositive ? 'bg-green-500/10' : 'bg-destructive/10', isPositive ? 'border-green-500/30' : 'border-destructive/30');
-    setTimeout(() => {
-        el.classList.remove('scale-110', 'bg-green-500/10', 'bg-destructive/10', 'border-green-500/30', 'border-destructive/30');
-    }, 400);
-}
-
 // --- Actions ---
 
 window.toggleTask = function(e, id) {
     if (e) e.stopPropagation();
     const task = store.tasks.find(t => t.id === id);
     if (task) {
-        // Anti-Gaming: Task Age Check (Must be > 1 min old to get points)
-        const now = Date.now();
-        const taskAge = now - (task.createdAt || 0); 
-        const isEligible = (task.createdAt && taskAge > 60000);
-
         task.completed = !task.completed;
         
         if (task.completed) {
-            // Task Completion Logic
-            task.completedAt = now;
-            
-            if (isEligible) {
-                updatePoints(10); // Reward
-            } else if (!task.createdAt) {
-                // Legacy tasks (no createdAt) - give points gently? Or safer to skip? 
-                // Let's assume legacy tasks are old enough.
-                updatePoints(10);
-            } else {
-                showToast("Task too new for points (Wait 1m)", "info");
-            }
         } else {
             // Unchecking - deduct points if they were likely awarded?
             // Simplification: Always deduct 10 to keep balance, but don't go negative on daily cap logic (handled in updatePoints)
@@ -790,50 +803,76 @@ window.openRewardsProfile = function() {
     const modal = document.getElementById('rewards-modal');
     if (!modal) return;
     
-    const list = document.getElementById('sapling-list');
-    const progressFill = document.getElementById('sapling-progress-fill');
-    const nextText = document.getElementById('sapling-next-text');
-    
     // Stats
     const total = store.user.points;
     const currentSaplings = store.rewards.saplings.length;
-    const nextMilestone = (currentSaplings + 1) * 1000;
+    
+    // Logic: Each sapling every 1000 points.
+    // Progress is within the current 1000 chunk.
+    const progressPercent = (total % 1000) / 10; 
+    const nextMilestone = (Math.floor(total / 1000) + 1) * 1000;
     const needed = nextMilestone - total;
-    const progressPercent = Math.min((total % 1000) / 10, 100); // 0-1000 scale
+
+    // UI Elements
+    const progressFill = document.getElementById('sapling-progress-fill');
+    const nextText = document.getElementById('sapling-next-text');
+    const countDisplay = document.getElementById('sapling-count-display');
     
     if (progressFill) progressFill.style.width = `${progressPercent}%`;
-    if (nextText) nextText.textContent = `${needed} points to next sapling`;
+    if (nextText) nextText.textContent = `${needed} pts to new sapling`;
+    if (countDisplay) countDisplay.textContent = `${currentSaplings} Sapling${currentSaplings !== 1 ? 's' : ''}`;
     
-    // Render Saplings
-    list.innerHTML = '';
-    if (store.rewards.saplings.length === 0) {
-        list.innerHTML = `<div class="text-center text-muted-foreground py-8 text-sm">Keep flowing to plant your first tree! 🌱</div>`;
-    } else {
-        store.rewards.saplings.forEach(s => {
-            const el = document.createElement('div');
-            el.className = 'flex items-center justify-between p-3 bg-card border rounded-xl shadow-sm';
-            const dateStr = new Date(s.date).toLocaleDateString();
-            el.innerHTML = `
-                <div class="flex items-center gap-3">
-                    <div class="h-10 w-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
-                        <i data-lucide="sprout" class="h-5 w-5"></i>
-                    </div>
-                    <div>
-                        <p class="font-bold text-sm">Sapling #${s.id}</p>
-                        <p class="text-xs text-muted-foreground">Earned ${dateStr}</p>
-                    </div>
-                </div>
-                <button onclick="copySaplingCode('${s.code}')" class="text-xs font-bold bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-md transition-colors">
-                    Copy Code
-                </button>
-            `;
-            list.appendChild(el);
-        });
-        if (window.lucide) lucide.createIcons();
-    }
+    renderForestGrid();
     
     modal.showModal();
 }
+
+function renderForestGrid() {
+    const grid = document.getElementById('forest-grid');
+    if (!grid) return;
+    
+    grid.innerHTML = '';
+    const saplings = store.rewards.saplings;
+    
+    if (saplings.length === 0) {
+        // Empty State in Grid
+        grid.className = "flex flex-col items-center justify-center p-8 bg-muted/30 rounded-2xl border border-dashed border-border/60 min-h-[150px] gap-2";
+        grid.innerHTML = `
+            <i data-lucide="sprout" class="h-8 w-8 text-muted-foreground/30"></i>
+            <span class="text-xs text-muted-foreground/50 font-medium">No saplings yet. Keep growing!</span>
+        `;
+    } else {
+        grid.className = "grid grid-cols-5 gap-2 min-h-[100px] p-4 bg-muted/30 rounded-2xl border border-dashed border-border/60 justify-items-center";
+        saplings.forEach(s => {
+            const el = document.createElement('button');
+            el.className = "h-10 w-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center hover:scale-110 transition-transform shadow-sm relative group";
+            el.onclick = () => copySaplingCode(s.code);
+            el.innerHTML = `
+                <i data-lucide="tree-deciduous" class="h-5 w-5"></i>
+                <div class="absolute -bottom-8 left-1/2 -translate-x-1/2 z-20 bg-popover text-popover-foreground text-[10px] px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity">
+                    #${s.id} • ${new Date(s.date).toLocaleDateString()}
+                </div>
+            `;
+            grid.appendChild(el);
+        });
+    }
+    if (window.lucide) lucide.createIcons();
+}
+
+window.toggleRewardInfo = function() {
+    const card = document.getElementById('reward-info-card');
+    if (card) {
+        card.classList.toggle('hidden');
+    }
+}
+
+window.viewSaplingHistory = function() {
+    // For now, toggle visibility or switch view. 
+    // MVP: Just show toast. Real history log could be a separate modal or view.
+    showToast('Full history coming soon! Check your Forest Grid.', 'info');
+}
+
+
 
 window.copySaplingCode = function(code) {
     navigator.clipboard.writeText(code).then(() => {
@@ -1200,17 +1239,26 @@ function checkNotifications() {
     const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
     const todayDay = now.getDay();
     const todayStr = now.toISOString().split('T')[0];
-    
-    const taskStarting = store.tasks.find(t => {
-        if (t.startTime === currentTime) return true;
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Find ALL tasks starting now or in 5 mins
+    const tasksStarting = store.tasks.filter(t => {
+        if (t.deletedDates && t.deletedDates.includes(todayStr)) return false;
+
+        // Check time match (Exact)
+        if (t.startTime === currentTime) {
+            if (t.recurrence === 'none') return t.date === todayStr;
+            if (t.recurrence === 'daily') return true;
+            if (t.recurrence === 'weekdays') return t.days && t.days.includes(todayDay);
+        }
         
-        // 5 Minute Warning Logic
+        // Check 5 Minute Warning
         const [h, m] = t.startTime.split(':').map(Number);
         const taskMinutes = h * 60 + m;
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
         
+        // Need to verify taskMinutes is valid (e.g., crossing midnight)
+        // For MVP, assuming single-day tasks. 
         if (taskMinutes - currentMinutes === 5) {
-             // Check valid day
              if (t.recurrence === 'none') return t.date === todayStr;
              if (t.recurrence === 'daily') return true;
              if (t.recurrence === 'weekdays') return t.days && t.days.includes(todayDay);
@@ -1219,24 +1267,17 @@ function checkNotifications() {
         return false;
     });
     
-    if (taskStarting) {
-        const [h, m] = taskStarting.startTime.split(':').map(Number);
+    tasksStarting.forEach(task => {
+        const [h, m] = task.startTime.split(':').map(Number);
         const taskMinutes = h * 60 + m;
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
         
+        // Prevent duplicate notifications? (Basic debounce could be added here if needed, but per-minute check is usually fine)
         if (taskMinutes - currentMinutes === 5) {
-            showNotification(`Up Next: ${taskStarting.title}`, `Starting in 5 minutes (${taskStarting.startTime})`);
-        } else if (taskStarting.startTime === currentTime) {
-            // Check day validity again for exact match (since find returns first match)
-            // Ideally we filter first, but this is a quick patch on existing structure
-            let isValid = false;
-            if (taskStarting.recurrence === 'none') isValid = taskStarting.date === todayStr;
-            else if (taskStarting.recurrence === 'daily') isValid = true;
-            else if (taskStarting.recurrence === 'weekdays') isValid = taskStarting.days && taskStarting.days.includes(todayDay);
-            
-            if (isValid) showNotification(`Starting: ${taskStarting.title}`, `It's time for ${taskStarting.title}`);
+            showNotification(`Up Next: ${task.title}`, `Starting in 5 minutes (${task.startTime})`);
+        } else {
+            showNotification(`Starting: ${task.title}`, `It's time for ${task.title}`);
         }
-    }
+    });
 
     // Water Reminder
     if (store.user.water.reminders) {
@@ -1281,22 +1322,69 @@ function showNotification(title, body) {
              navigator.serviceWorker.ready.then(registration => {
                 registration.showNotification(title, {
                     body: body,
-                    icon: 'https://img.icons8.com/nolan/512/time.png',
-                    vibrate: [200, 100, 200]
+                    icon: 'logo-square.svg', // Updated icon
+                    vibrate: [200, 100, 200],
+                    badge: 'logo-square.svg',
+                    tag: title // Simple dedup tag
                 });
             });
         } else {
-            // Fallback for non-SW contexts or localhost
-            const n = new Notification(title, { body, icon: 'https://img.icons8.com/nolan/512/time.png' });
-            n.onclick = () => {
-                n.close();
-                window.focus();
-            };
+            const n = new Notification(title, { body, icon: 'logo-square.svg', tag: title });
+            n.onclick = () => { n.close(); window.focus(); };
         }
     }
     // Also show toast inside app if visible
     if (!document.hidden) {
-        showToast(title, 'info');
+        showToast(`${title}: ${body}`, 'info');
+    }
+}
+
+window.testNotification = function() {
+    if (Notification.permission === 'granted') {
+        showNotification("Test Notification", "If you see this, notifications are working!");
+    } else {
+        Notification.requestPermission().then(perm => {
+             if (perm === 'granted') showNotification("Test Notification", "Notifications enabled!");
+             else showToast("Permission denied. Check browser settings.", "error");
+        });
+    }
+}
+
+function checkStartupPermissions() {
+    // Only check if we haven't checked recently to avoid annoyed (or use session storage)
+    if (Notification.permission === 'default' && !sessionStorage.getItem('perm_dismissed')) {
+        // Create a persistent sticky banner
+        const banner = document.createElement('div');
+        banner.className = "fixed bottom-6 left-4 right-4 z-[200] max-w-sm mx-auto bg-primary text-primary-foreground p-4 rounded-xl shadow-2xl flex items-center justify-between animate-in slide-in-from-bottom-10";
+        banner.innerHTML = `
+            <div class="flex items-center gap-3">
+                <i data-lucide="bell-ring" class="h-5 w-5 animate-pulse"></i>
+                <div class="text-sm font-bold">Enable notifications?</div>
+            </div>
+            <div class="flex items-center gap-2">
+                 <button id="perm-later" class="text-xs opacity-80 hover:opacity-100 px-2 py-1">Later</button>
+                 <button id="perm-enable" class="text-xs font-bold bg-background text-foreground px-3 py-1.5 rounded-lg shadow-sm hover:scale-105 transition-all">Enable</button>
+            </div>
+        `;
+        document.body.appendChild(banner);
+        if (window.lucide) lucide.createIcons();
+        
+        document.getElementById('perm-enable').onclick = () => {
+            Notification.requestPermission().then(res => {
+                if (res === 'granted') {
+                    store.user.settings.notificationsEnabled = true;
+                    saveStore();
+                    showNotification("You're all set!", "Notifications enabled.");
+                }
+                banner.classList.add('animate-out', 'fade-out', 'slide-out-to-bottom-10');
+                setTimeout(() => banner.remove(), 500);
+            });
+        };
+        document.getElementById('perm-later').onclick = () => {
+            sessionStorage.setItem('perm_dismissed', 'true');
+            banner.classList.add('animate-out', 'fade-out', 'slide-out-to-bottom-10');
+            setTimeout(() => banner.remove(), 500);
+        };
     }
 }
 
