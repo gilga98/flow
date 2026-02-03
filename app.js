@@ -655,6 +655,9 @@ function renderUI() {
     // 4. Current Task
     updateCurrentTask();
     
+    // 5. Water UI (Ensure visual consistency)
+    updateWaterUI();
+    
     // Refresh Icons
     if (window.lucide) lucide.createIcons();
 }
