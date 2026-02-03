@@ -121,12 +121,16 @@ function loadStore() {
             };
 
             // Migration: Move old water.current to hydrationLogs (if applicable)
-            // If we have a 'current' value but no log for today, save it.
             if (parsed.user?.water?.current !== undefined && !merged.hydrationLogs[new Date().toISOString().split('T')[0]]) {
                 const today = new Date().toISOString().split('T')[0];
                 if (parsed.user.water.date === today) {
                      merged.hydrationLogs[today] = parsed.user.water.current;
                 }
+            }
+
+            // Migration: Backfill totalPointsEarned for existing users so they don't lose Level
+            if (!merged.rewards.totalPointsEarned && merged.user.points > 0) {
+                merged.rewards.totalPointsEarned = merged.user.points;
             }
             
             return merged;
@@ -200,7 +204,7 @@ async function updatePoints(amount, source = 'generic', visualSource = null) {
         return;
     }
     
-    const oldLevel = Math.floor(store.user.points / 100) + 1;
+    const oldLevel = Math.floor(store.rewards.totalPointsEarned / 100) + 1;
     
     store.user.points += amount;
     if (store.user.points < 0) store.user.points = 0;
@@ -210,23 +214,24 @@ async function updatePoints(amount, source = 'generic', visualSource = null) {
         store.rewards.totalPointsEarned += amount;
     }
 
-    // Check for Sapling (Every 1000 points)
-    const currentSaplings = store.rewards.saplings.length;
-    const calculatedSaplings = Math.floor(store.user.points / 1000);
-    
-    if (calculatedSaplings > currentSaplings) {
-        const newSaplingsCount = calculatedSaplings - currentSaplings;
-        for (let i = 0; i < newSaplingsCount; i++) {
-            const id = generateId(); // Simple ID for now
-            const code = await generateVerificationCode(id, today);
-            store.rewards.saplings.push({
-                id: (currentSaplings + i + 1).toString().padStart(4, '0'),
-                date: new Date().toISOString(),
-                code: code,
-                claimed: false
-            });
-            showNotification("New Sapling Planted!", "You've grown enough to plant a tree!");
-        }
+    // Check for Sapling Redemption (Cost: 1000 points)
+    const SAPLING_COST = 1000;
+    while (store.user.points >= SAPLING_COST) {
+        store.user.points -= SAPLING_COST;
+        
+        const currentSaplings = store.rewards.saplings.length;
+        const id = (currentSaplings + 1).toString().padStart(4, '0');
+        const code = await generateVerificationCode(id, today);
+        
+        store.rewards.saplings.push({
+            id: id,
+            date: new Date().toISOString(),
+            code: code,
+            claimed: false
+        });
+        
+        showNotification("New Sapling Planted!", "You've grown enough to plant a tree! check your forest.");
+        showToast("1000 Points Redeemed for a Sapling! 🌱", "success");
     }
     
     saveStore();
@@ -234,8 +239,9 @@ async function updatePoints(amount, source = 'generic', visualSource = null) {
     // Visuals
     animatePoints(amount, visualSource);
     
-    const newLevel = Math.floor(store.user.points / 100) + 1;
+    const newLevel = Math.floor(store.rewards.totalPointsEarned / 100) + 1;
     if (newLevel > oldLevel) {
+        triggerLevelUp(newLevel); // Trigger simplified level up logic
         showToast(`Level Up! You are now Level ${newLevel}`, 'success');
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     }
@@ -375,8 +381,8 @@ function renderUI() {
     const pointsValue = document.getElementById('points-value');
     if (pointsValue) pointsValue.textContent = store.user.points;
     
-    const level = Math.floor(store.user.points / 100) + 1;
-    const levelProgress = store.user.points % 100;
+    const level = Math.floor(store.rewards.totalPointsEarned / 100) + 1;
+    const levelProgress = store.rewards.totalPointsEarned % 100;
     
     const levelValue = document.getElementById('level-value');
     const levelProgressBar = document.getElementById('level-progress');
@@ -867,11 +873,9 @@ window.openRewardsProfile = function() {
     const total = store.user.points;
     const currentSaplings = store.rewards.saplings.length;
     
-    // Logic: Each sapling every 1000 points.
-    // Progress is within the current 1000 chunk.
-    const progressPercent = (total % 1000) / 10; 
-    const nextMilestone = (Math.floor(total / 1000) + 1) * 1000;
-    const needed = nextMilestone - total;
+    // Logic: 1000 points cost per sapling.
+    const progressPercent = (store.user.points / 1000) * 100; 
+    const needed = 1000 - store.user.points;
 
     // UI Elements
     const progressFill = document.getElementById('sapling-progress-fill');
