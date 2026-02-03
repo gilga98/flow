@@ -353,7 +353,6 @@ function init() {
     renderUI();
     setupListeners();
     setupUtilities();
-    setupUtilities();
     checkNotifications();
     checkStartupPermissions();
     
@@ -1526,31 +1525,40 @@ window.openFocusMode = function(taskId) {
 
 function setupUtilities() {
     // Sub-tabs
+    // Sub-tabs
     const focusBtn = document.getElementById('util-tab-focus');
     const breathBtn = document.getElementById('util-tab-breath');
+    const waterBtn = document.getElementById('util-tab-water');
     const focusView = document.getElementById('util-focus');
     const breathView = document.getElementById('util-breath');
+    const waterView = document.getElementById('util-water');
 
     focusBtn.addEventListener('click', () => {
         focusBtn.classList.remove('text-muted-foreground', 'bg-transparent');
         focusBtn.classList.add('bg-background', 'text-foreground', 'shadow-sm');
         
-        breathBtn.classList.add('text-muted-foreground', 'bg-transparent');
-        breathBtn.classList.remove('bg-background', 'text-foreground', 'shadow-sm');
+        [breathBtn, waterBtn].forEach(b => {
+             b.classList.add('text-muted-foreground', 'bg-transparent');
+             b.classList.remove('bg-background', 'text-foreground', 'shadow-sm');
+        });
         
         focusView.classList.remove('hidden');
         breathView.classList.add('hidden');
+        waterView.classList.add('hidden');
     });
 
     breathBtn.addEventListener('click', () => {
         breathBtn.classList.remove('text-muted-foreground', 'bg-transparent');
         breathBtn.classList.add('bg-background', 'text-foreground', 'shadow-sm');
         
-        focusBtn.classList.add('text-muted-foreground', 'bg-transparent');
-        focusBtn.classList.remove('bg-background', 'text-foreground', 'shadow-sm');
+        [focusBtn, waterBtn].forEach(b => {
+             b.classList.add('text-muted-foreground', 'bg-transparent');
+             b.classList.remove('bg-background', 'text-foreground', 'shadow-sm');
+        });
 
         breathView.classList.remove('hidden');
         focusView.classList.add('hidden');
+        waterView.classList.add('hidden');
     });
 
     // Timer Controls
